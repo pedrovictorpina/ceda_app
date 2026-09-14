@@ -1,0 +1,52 @@
+{
+  "name": "ceda_app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "lint": "eslint .",
+    "typecheck": "nuxt typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:test": "supabase test db",
+    "mobile:sync": "npm run generate && cap sync",
+    "mobile:android": "npm run mobile:sync && cap open android",
+    "mobile:ios": "npm run mobile:sync && cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/app": "8.0.0",
+    "@capacitor/core": "8.5.2",
+    "@capacitor/haptics": "8.0.0",
+    "@capacitor/share": "8.0.0",
+    "@iconify-json/lucide": "^1.2.131",
+    "@nuxt/ui": "^4.11.1",
+    "@pinia/nuxt": "1.0.2",
+    "@supabase/supabase-js": "2.57.4",
+    "@vite-pwa/nuxt": "1.1.1",
+    "nuxt": "^4.5.2",
+    "pinia": "4.0.3",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/cli": "8.5.2",
+    "@capacitor/ios": "8.5.2",
+    "@nuxt/eslint": "^1.17.0",
+    "eslint": "^10.10.0",
+    "supabase": "2.117.0",
+    "typescript": "^6.0.3",
+    "vitest": "5.0.0",
+    "vue-tsc": "^3.3.11"
+  },
+  "overrides": {
+    "esbuild": "0.28.1"
+  }
+}
