@@ -32,6 +32,14 @@ npm run build
 npm run generate
 ```
 
+Não execute `build` ou `generate` ao mesmo tempo que `dev`: os modos compartilham artefatos em `.nuxt` e uma geração concorrente pode invalidar aliases do Vite, como `#app-manifest`. Se isso ocorrer, pare somente o servidor deste projeto e execute:
+
+```bash
+npm run clean
+npm run postinstall
+npm run dev
+```
+
 ## Supabase local
 
 O CLI está fixado no projeto. Descubra opções pela ajuda (`npx supabase --help`) antes de usar comandos novos.
