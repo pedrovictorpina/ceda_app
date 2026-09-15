@@ -20,7 +20,7 @@ test('public routes render their primary content', async ({ page }) => {
 test('protected routes redirect signed-out visitors to login', async ({ page }) => {
   const protectedRoutes = [
     '/inicio', '/palavra-do-dia', '/noticias', '/comunidade', '/oracao',
-    '/eventos', '/feed', '/galeria', '/campanhas', '/social', '/notificacoes',
+    '/eventos', '/feed', '/galeria', '/campanhas', '/social', '/notificacoes', '/celulas',
     '/ovelhinhas', '/perfil', '/design-system', '/admin'
   ]
 

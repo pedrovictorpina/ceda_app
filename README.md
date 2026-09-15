@@ -78,6 +78,9 @@ A migration inicial está em `supabase/migrations/`. `supabase/config.toml` desl
 - Políticas privilegiadas leem `app_metadata.roles`, nunca `user_metadata`. Ao alterar um papel, o backend administrativo futuro deve atualizar `app_metadata` com credencial exclusivamente server-side e revogar/renovar a sessão para evitar JWT desatualizado.
 - As funções auxiliares são `SECURITY INVOKER`; não há `SECURITY DEFINER`.
 - Middleware de rota melhora UX, mas não é fronteira de segurança. RLS é a proteção efetiva.
+- Células têm cadastro administrativo, líderes designados, endereço privado, membros, convites para usuários já cadastrados, comunicados e enquetes. Líderes gerenciam somente as próprias células; membros veem somente células das quais participam; convidados pendentes veem o convite, mas não o endereço.
+- A publicação de comunicado de célula cria notificações internas para membros e colíderes. Push externo permanece uma integração futura e não é simulado nem anunciado como enviado.
+- A migration de Células foi criada e validada somente no Supabase local. Aplicá-la ao projeto cloud exige uma publicação explícita e separada; este repositório não faz link ou `db push` automaticamente.
 - Ovelhinhas exige aprovação de responsável e vínculo por criança; equipe infantil é separada. Crianças, alergias, emergência, vínculos e alertas não são públicos e têm trilha de auditoria.
 - Solicitar exclusão cria um registro confirmado e auditável. Não apaga automaticamente a conta ou dados; o procedimento definitivo depende de política de retenção e revisão administrativa/jurídica.
 
@@ -136,6 +139,7 @@ O projeto não depende de CI. Codemagic pode futuramente executar o build/assina
 - Contatos oficiais exigem consentimento registrado; contatos pessoais de membros não são publicados por padrão.
 - Endereços oficiais ficam em `church_locations` e são reutilizados por eventos/cultos.
 - O provider de push é uma interface vazia nesta etapa. Lembretes persistem antecedência e cancelamento, separados de presença.
+- Os dados demonstrativos de Células existem apenas quando o app roda sem configuração Supabase e são identificados na interface. Quando há Supabase configurado, autenticação e RLS reais são obrigatórios.
 
 ## Pendências deliberadas
 

@@ -8,6 +8,7 @@ export function useAppNavigation() {
     { label: 'Palavra do Dia', icon: 'i-lucide-book-open-text', to: '/palavra-do-dia' },
     { label: 'Notícias', icon: 'i-lucide-newspaper', to: '/noticias' },
     { label: 'Comunidade', icon: 'i-lucide-users', to: '/comunidade' },
+    { label: 'Células', icon: 'i-lucide-house-heart', to: '/celulas' },
     { label: 'Motivos de oração', icon: 'i-lucide-heart', to: '/oracao' },
     { label: 'Eventos', icon: 'i-lucide-calendar-days', to: '/eventos' },
     { label: 'Horários de Culto', icon: 'i-lucide-clock-3', to: '/horarios-de-culto' },
