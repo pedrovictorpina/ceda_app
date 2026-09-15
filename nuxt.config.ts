@@ -18,7 +18,8 @@ export default defineNuxtConfig({
       galleryUrl: process.env.NUXT_PUBLIC_GALLERY_URL || '',
       galleryProvider: process.env.NUXT_PUBLIC_GALLERY_PROVIDER || 'web',
       churchWebsiteUrl: process.env.NUXT_PUBLIC_CHURCH_WEBSITE_URL || '',
-      instagramUrl: process.env.NUXT_PUBLIC_INSTAGRAM_URL || '',
+      instagramUrl: process.env.NUXT_PUBLIC_INSTAGRAM_URL || 'https://www.instagram.com/igrejaceda/',
+      youtubeUrl: process.env.NUXT_PUBLIC_YOUTUBE_URL || 'https://www.youtube.com/@IgrejaCEDA',
       churchAddress: process.env.NUXT_PUBLIC_CHURCH_ADDRESS || ''
     }
   },
@@ -38,11 +39,11 @@ export default defineNuxtConfig({
       background_color: '#09090b',
       display: 'standalone',
       start_url: '/inicio',
-      icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }]
+      icons: [{ src: '/brand/ceda-logo.jpg', sizes: '150x150', type: 'image/jpeg', purpose: 'any' }]
     },
     workbox: {
       navigateFallback: '/',
-      globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}']
+      globPatterns: ['**/*.{js,css,html,ico,jpg,jpeg,png,svg,woff2}']
     },
     devOptions: { enabled: false }
   }

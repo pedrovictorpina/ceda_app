@@ -29,13 +29,7 @@ function closeOnEscape(event: KeyboardEvent) {
           aria-label="Alternar barra lateral"
           @click="sidebarCollapsed = !sidebarCollapsed"
         />
-        <NuxtLink
-          to="/inicio"
-          class="focus-ring flex items-center gap-2 rounded-md"
-        >
-          <span class="grid size-9 place-items-center rounded-xl bg-primary font-black text-white">C</span>
-          <span class="font-semibold">CEDA</span>
-        </NuxtLink>
+        <BrandLogo to="/inicio" />
         <UBadge
           class="hidden sm:inline-flex"
           color="neutral"

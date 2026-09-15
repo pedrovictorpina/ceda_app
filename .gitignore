@@ -5,6 +5,9 @@
 .nitro
 .cache
 .playwright-cli
+output/playwright
+playwright-report
+test-results
 dist
 
 # Node dependencies

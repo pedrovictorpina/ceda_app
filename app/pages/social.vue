@@ -1,7 +1,7 @@
 <script setup lang="ts">
 definePageMeta({ middleware: 'auth' })
 useSeoMeta({ title: 'Social e transmissões' })
-const { website, instagram } = useOfficialLinks()
+const { website, instagram, youtube } = useOfficialLinks()
 </script>
 
 <template>
@@ -58,10 +58,17 @@ const { website, instagram } = useOfficialLinks()
           name="i-lucide-youtube"
           class="size-7 text-primary"
         /><h2 class="mt-3 font-semibold">
-          YouTube e live
+          YouTube
         </h2><p class="mt-1 text-sm text-muted">
-          Placeholder para transmissões e vídeos publicados.
-        </p>
+          Canal oficial da CEDA para transmissões e vídeos publicados.
+        </p><template #footer>
+          <UButton
+            :to="youtube"
+            target="_blank"
+            rel="noopener noreferrer"
+            label="Abrir YouTube"
+          />
+        </template>
       </UCard>
     </div>
   </div>

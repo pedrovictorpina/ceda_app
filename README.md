@@ -40,6 +40,21 @@ npm run postinstall
 npm run dev
 ```
 
+### Testes E2E
+
+Playwright usa uma build própria na porta `4318`, gera relatório HTML em `output/playwright/report` e recusa iniciar se o servidor manual estiver ativo na porta 3000. Isso evita que `build` e `dev` disputem `.nuxt`.
+
+```bash
+# pare temporariamente o dev da porta 3000
+npm run test:e2e
+npm run test:e2e:ui
+npm run test:e2e:debug
+# depois reinicie a prévia manual
+npm run dev -- --host 127.0.0.1 --port 3000
+```
+
+A suíte usa Chromium isolado, não depende de dados externos e cria no Supabase local apenas uma conta aleatória de teste quando o serviço está disponível.
+
 ## Supabase local
 
 O CLI está fixado no projeto. Descubra opções pela ajuda (`npx supabase --help`) antes de usar comandos novos.
@@ -56,6 +71,8 @@ A migration inicial está em `supabase/migrations/`. `supabase/config.toml` desl
 ### Autenticação e autorização
 
 - O cliente usa PKCE e somente a chave pública.
+- “Lembrar meu acesso” controla onde a sessão do Supabase é persistida: `localStorage` somente após opt-in; caso contrário, `sessionStorage`, encerrado com a aba. O SDK exige `persistSession: true` para gerenciar/renovar a sessão, por isso um storage customizado seleciona a duração. Senhas nunca são armazenadas.
+- Cadastro usa `signUp` e guarda em `user_metadata` somente nome/telefone para criar o perfil no primeiro acesso confirmado. Autorização continua exclusivamente fora de `user_metadata`. Com confirmação de e-mail habilitada, o perfil é criado após confirmar e entrar; com autoconfirmação local, é criado imediatamente.
 - A tabela `profiles` guarda dados pessoais; idade nunca é persistida, apenas derivada de `birth_date`.
 - Papéis do sistema (`member`, `administrator`, `pastor`) são separados de tags/cargos e participações em ministérios.
 - Políticas privilegiadas leem `app_metadata.roles`, nunca `user_metadata`. Ao alterar um papel, o backend administrativo futuro deve atualizar `app_metadata` com credencial exclusivamente server-side e revogar/renovar a sessão para evitar JWT desatualizado.
@@ -88,7 +105,7 @@ tests/                     regras puras Vitest
 
 ## PWA e aplicativos
 
-O manifest, service worker e tema inicial estão configurados. O ícone SVG é deliberadamente provisório; antes de homologar instalação, produza PNGs 192/512, ícone maskable, favicon e splash definitivos.
+O manifest, service worker e tema inicial estão configurados. A logo oficial em `public/brand/ceda-logo.jpg` já identifica o site, o favicon e o manifest. Antes de homologar a instalação, ainda produza a partir da identidade aprovada os PNGs 192/512, ícone maskable e splash definitivos.
 
 ```bash
 npx cap add android
@@ -114,7 +131,7 @@ O projeto não depende de CI. Codemagic pode futuramente executar o build/assina
 - Palavra do Dia e Notícias reutilizam `daily_messages`, autoria, agendamento e histórico por `content_type`.
 - Horários de Culto reutilizam `events`, recorrência e `church_locations`.
 - Galeria usa `NUXT_PUBLIC_GALLERY_URL` por adapter externo; as imagens não vão para o Supabase. Links do Google Drive podem falhar por permissão, cookies ou bloqueio de embedding. Prefira link HTTPS público somente quando aprovado e troque o provider sem mudar a tela.
-- Site e Instagram são links oficiais simples configurados por env. A futura sincronização de feed usa contratos separados.
+- Instagram (`https://www.instagram.com/igrejaceda/`) e YouTube (`https://www.youtube.com/@IgrejaCEDA`) têm links oficiais centralizados no runtime config, com override opcional por env. A futura sincronização de feed usa contratos separados.
 - Campanhas exibem meta e progresso informativos. Não há pagamento nem gateway.
 - Contatos oficiais exigem consentimento registrado; contatos pessoais de membros não são publicados por padrão.
 - Endereços oficiais ficam em `church_locations` e são reutilizados por eventos/cultos.
@@ -122,7 +139,7 @@ O projeto não depende de CI. Codemagic pode futuramente executar o build/assina
 
 ## Pendências deliberadas
 
-Conteúdo real, identidade visual definitiva, fluxo de cadastro/recuperação, CRUD completo, uploads, calendário mensal interativo, comentários em tempo real, push, integrações sociais, processamento administrativo de exclusão, texto jurídico e builds de loja são etapas futuras. A rota estável `/privacidade` contém um placeholder explicitamente não jurídico.
+Conteúdo real, recuperação de senha, CRUD completo, uploads, calendário mensal interativo, comentários em tempo real, push, integrações sociais por API, processamento administrativo de exclusão, texto jurídico e builds de loja são etapas futuras. A rota estável `/privacidade` contém um placeholder explicitamente não jurídico.
 
 ## Fontes técnicas verificadas na criação
 
