@@ -2,8 +2,8 @@
 useHead({
   htmlAttrs: { lang: 'pt-BR' },
   link: [
-    { rel: 'icon', type: 'image/jpeg', href: '/brand/ceda-logo.jpg' },
-    { rel: 'apple-touch-icon', href: '/brand/ceda-logo.jpg' }
+    { rel: 'icon', type: 'image/png', href: '/brand/ceda-logo.png' },
+    { rel: 'apple-touch-icon', type: 'image/png', href: '/brand/ceda-logo.png' }
   ]
 })
 </script>

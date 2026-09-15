@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { canManageChurch } from '~/utils/authorization'
+
 const props = withDefaults(defineProps<{ section?: string }>(), { section: 'Membros' })
 const route = useRoute()
 const auth = useAuthStore()
@@ -8,9 +10,22 @@ const menuOpen = ref(false)
 
 const mobilePrimary = computed(() => visibleItems.value.filter(item => ['/inicio', '/eventos', '/notificacoes'].includes(item.to)))
 const sidebarItems = computed(() => visibleItems.value.filter(item => !item.webOnly || !menuOpen.value))
+const canUseAdminView = computed(() => canManageChurch(auth.profile))
+const isAdminView = computed(() => route.path.startsWith('/admin'))
 
 function closeOnEscape(event: KeyboardEvent) {
   if (event.key === 'Escape') menuOpen.value = false
+}
+
+async function signOut() {
+  menuOpen.value = false
+  await auth.signOut()
+  await navigateTo('/entrar')
+}
+
+async function changeView(view: 'member' | 'administrator') {
+  if (view === 'administrator' && !canUseAdminView.value) return
+  await navigateTo(view === 'administrator' ? '/admin' : '/inicio')
 }
 </script>
 
@@ -39,6 +54,36 @@ function closeOnEscape(event: KeyboardEvent) {
         </UBadge>
       </div>
       <div class="flex items-center gap-2">
+        <div
+          v-if="canUseAdminView"
+          class="hidden items-center rounded-xl bg-elevated p-1 lg:flex"
+          aria-label="Alternar visão"
+        >
+          <UButton
+            size="sm"
+            :variant="!isAdminView ? 'soft' : 'ghost'"
+            :color="!isAdminView ? 'primary' : 'neutral'"
+            label="Visão membro"
+            @click="changeView('member')"
+          />
+          <UButton
+            size="sm"
+            :variant="isAdminView ? 'soft' : 'ghost'"
+            :color="isAdminView ? 'primary' : 'neutral'"
+            label="Visão administrador"
+            @click="changeView('administrator')"
+          />
+        </div>
+        <UButton
+          v-if="canUseAdminView"
+          class="lg:hidden"
+          color="neutral"
+          variant="ghost"
+          :icon="isAdminView ? 'i-lucide-user-round' : 'i-lucide-shield-check'"
+          :aria-label="isAdminView ? 'Alternar para Visão membro' : 'Alternar para Visão administrador'"
+          :title="isAdminView ? 'Visão membro' : 'Visão administrador'"
+          @click="changeView(isAdminView ? 'member' : 'administrator')"
+        />
         <UColorModeButton />
         <UButton
           color="neutral"
@@ -51,12 +96,12 @@ function closeOnEscape(event: KeyboardEvent) {
     </header>
 
     <aside
-      class="fixed bottom-0 left-0 top-16 z-30 hidden border-r border-default bg-default p-3 transition-[width] md:block"
+      class="fixed bottom-0 left-0 top-16 z-30 hidden flex-col border-r border-default bg-default pb-3 pl-1 pr-3 pt-3 transition-[width] md:flex"
       :class="sidebarCollapsed ? 'w-20' : 'w-68'"
     >
       <nav
         aria-label="Navegação principal"
-        class="space-y-1"
+        class="sidebar-scroll-left flex-1 space-y-1 overflow-y-auto"
       >
         <NuxtLink
           v-for="item in visibleItems"
@@ -76,6 +121,19 @@ function closeOnEscape(event: KeyboardEvent) {
           >{{ item.label }}</span>
         </NuxtLink>
       </nav>
+      <div class="mt-3 border-t border-default pt-3">
+        <UButton
+          color="neutral"
+          variant="ghost"
+          block
+          icon="i-lucide-log-out"
+          :label="sidebarCollapsed ? undefined : 'Sair'
+          "
+          :aria-label="'Sair da conta'"
+          :title="sidebarCollapsed ? 'Sair' : undefined"
+          @click="signOut"
+        />
+      </div>
     </aside>
 
     <main
@@ -158,6 +216,16 @@ function closeOnEscape(event: KeyboardEvent) {
             />{{ item.label }}
           </NuxtLink>
         </nav>
+        <div class="mt-4 border-t border-default pt-4">
+          <UButton
+            color="neutral"
+            variant="outline"
+            block
+            icon="i-lucide-log-out"
+            label="Sair"
+            @click="signOut"
+          />
+        </div>
       </aside>
     </div>
   </div>

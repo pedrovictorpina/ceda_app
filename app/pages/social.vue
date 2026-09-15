@@ -8,8 +8,8 @@ const { website, instagram, youtube } = useOfficialLinks()
   <div>
     <PageIntro
       title="Social e transmissões"
-      description="Links oficiais e integrações futuras permanecem desacoplados."
-      icon="i-lucide-play-square"
+      description="Acompanhe mensagens, transmissões e novidades nos canais oficiais da CEDA."
+      icon="i-lucide-square-play"
     /><div class="grid gap-4 sm:grid-cols-3">
       <UCard>
         <UIcon
@@ -18,7 +18,7 @@ const { website, instagram, youtube } = useOfficialLinks()
         /><h2 class="mt-3 font-semibold">
           Site
         </h2><p class="mt-1 text-sm text-muted">
-          Site público oficial.
+          Informações institucionais e conteúdos da igreja.
         </p><template #footer>
           <UButton
             v-if="website"
@@ -39,7 +39,7 @@ const { website, instagram, youtube } = useOfficialLinks()
         /><h2 class="mt-3 font-semibold">
           Instagram
         </h2><p class="mt-1 text-sm text-muted">
-          Link do perfil oficial; a integração de feed será um serviço separado.
+          Registros dos encontros, avisos e novidades da comunidade.
         </p><template #footer>
           <UButton
             v-if="instagram"

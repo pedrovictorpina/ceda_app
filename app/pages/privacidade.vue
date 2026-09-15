@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'public' })
+definePageMeta({ layout: 'institutional' })
 useSeoMeta({ title: 'Política de Privacidade' })
 </script>
 

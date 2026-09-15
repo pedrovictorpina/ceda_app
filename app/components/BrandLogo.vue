@@ -16,7 +16,7 @@ const props = withDefaults(defineProps<{
     aria-label="CEDA — página inicial"
   >
     <img
-      src="/brand/ceda-logo.jpg"
+      src="/brand/ceda-logo.png"
       alt="Logo da CEDA"
       width="150"
       height="150"

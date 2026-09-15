@@ -39,7 +39,7 @@ export default defineNuxtConfig({
       background_color: '#09090b',
       display: 'standalone',
       start_url: '/inicio',
-      icons: [{ src: '/brand/ceda-logo.jpg', sizes: '150x150', type: 'image/jpeg', purpose: 'any' }]
+      icons: [{ src: '/brand/ceda-logo.png', sizes: '1254x1254', type: 'image/png', purpose: 'any' }]
     },
     workbox: {
       navigateFallback: '/',

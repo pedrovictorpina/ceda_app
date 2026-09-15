@@ -118,7 +118,9 @@ npm run mobile:android
 npm run mobile:ios
 ```
 
-`npm run mobile:sync` gera a versão estática e sincroniza `.output/public`. O `appId` atual (`org.example.ceda`) é placeholder obrigatório de troca antes de criar builds de loja. Não adicione plataformas nativas antes de confirmar:
+Por padrão, o APK carrega a aplicação publicada em `https://ceda-app-beige.vercel.app` no WebView, assim toda atualização publicada no site chega ao aplicativo sem uma nova compilação. Defina `CAPACITOR_SERVER_URL` para apontar outro ambiente. Para gerar uma variante com os arquivos estáticos embarcados, defina `CAPACITOR_USE_BUNDLED_WEB=true` e execute `npm run mobile:sync`.
+
+O `appId` atual (`org.example.ceda`) é placeholder obrigatório de troca antes de criar builds de loja. Não adicione plataformas nativas antes de confirmar:
 
 - bundle/application ID definitivo;
 - contas Google Play e Apple Developer;

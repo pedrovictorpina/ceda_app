@@ -14,9 +14,50 @@
   --app-mobile-nav-height: 4.5rem;
   --app-sidebar-width: 17rem;
   --app-sidebar-collapsed: 5rem;
+  --app-scrollbar-track: #fff7ed;
+  --app-scrollbar-thumb: #f97316;
+  --app-scrollbar-thumb-hover: #ea580c;
+}
+
+html.dark {
+  --app-scrollbar-track: #18181b;
 }
 
 html { scroll-behavior: smooth; }
 body { min-height: 100vh; }
 .safe-bottom { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
 .focus-ring:focus-visible { outline: 3px solid #f97316; outline-offset: 3px; }
+
+/* Mantém o feedback de rolagem alinhado à identidade visual em todos os painéis. */
+* {
+  scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--app-scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--app-scrollbar-thumb);
+  border: 2px solid var(--app-scrollbar-track);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--app-scrollbar-thumb-hover);
+}
+
+/* A direção posiciona somente a barra à esquerda; os itens continuam em LTR. */
+.sidebar-scroll-left {
+  direction: rtl;
+}
+
+.sidebar-scroll-left > * {
+  direction: ltr;
+}

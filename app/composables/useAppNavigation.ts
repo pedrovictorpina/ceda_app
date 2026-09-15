@@ -15,7 +15,7 @@ export function useAppNavigation() {
     { label: 'Feed', icon: 'i-lucide-messages-square', to: '/feed' },
     { label: 'Galeria', icon: 'i-lucide-images', to: '/galeria' },
     { label: 'Campanhas', icon: 'i-lucide-hand-coins', to: '/campanhas' },
-    { label: 'Social', icon: 'i-lucide-play-square', to: '/social' },
+    { label: 'Social', icon: 'i-lucide-square-play', to: '/social' },
     { label: 'Sobre Nós', icon: 'i-lucide-landmark', to: '/sobre' },
     { label: 'Fale Conosco', icon: 'i-lucide-mail', to: '/contato' },
     { label: 'Notificações', icon: 'i-lucide-bell', to: '/notificacoes' },
