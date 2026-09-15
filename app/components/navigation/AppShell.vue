@@ -81,7 +81,7 @@ async function changeView(view: 'member' | 'administrator') {
           variant="ghost"
           :icon="isAdminView ? 'i-lucide-user-round' : 'i-lucide-shield-check'"
           :aria-label="isAdminView ? 'Alternar para Visão membro' : 'Alternar para Visão administrador'"
-          :title="isAdminView ? 'Visão membro' : 'Visão administrador'"
+          :title="isAdminView ? 'Visão administrador' : 'Visão membro'"
           @click="changeView(isAdminView ? 'member' : 'administrator')"
         />
         <UColorModeButton />

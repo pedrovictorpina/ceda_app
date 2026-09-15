@@ -5,6 +5,21 @@ definePageMeta({ middleware: 'auth' })
 useSeoMeta({ title: 'Palavra do Dia' })
 
 const saved = ref(false)
+const publishedMessage = ref<Awaited<ReturnType<ReturnType<typeof usePublishedEditorial>['latest']>>>(null)
+const currentMessage = computed(() => publishedMessage.value
+  ? {
+      slug: publishedMessage.value.slug,
+      title: publishedMessage.value.title,
+      excerpt: publishedMessage.value.content.split(/\n\s*\n/)[0] || publishedMessage.value.content,
+      reference: 'Palavra do Dia',
+      readTime: `${Math.max(1, Math.ceil(publishedMessage.value.content.trim().split(/\s+/).length / 180))} min de leitura`,
+      author: 'Equipe pastoral CEDA'
+    }
+  : dailyMessage)
+
+onMounted(async () => {
+  publishedMessage.value = await usePublishedEditorial().latest('word_of_day')
+})
 </script>
 
 <template>
@@ -20,20 +35,20 @@ const saved = ref(false)
       <div class="relative p-1 sm:p-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <UBadge label="Hoje" />
-          <span class="flex items-center gap-1.5 text-xs text-muted"><UIcon name="i-lucide-clock-3" />{{ dailyMessage.readTime }}</span>
+          <span class="flex items-center gap-1.5 text-xs text-muted"><UIcon name="i-lucide-clock-3" />{{ currentMessage.readTime }}</span>
         </div>
         <p class="mt-8 text-sm font-semibold uppercase tracking-[0.18em] text-primary">
-          {{ dailyMessage.reference }}
+          {{ currentMessage.reference }}
         </p>
         <h2 class="mt-3 text-3xl font-black tracking-tight sm:text-4xl">
-          {{ dailyMessage.title }}
+          {{ currentMessage.title }}
         </h2>
         <p class="mt-5 max-w-3xl text-lg leading-8 text-muted">
-          {{ dailyMessage.excerpt }}
+          {{ currentMessage.excerpt }}
         </p>
         <div class="mt-8 flex flex-wrap items-center gap-3">
           <UButton
-            :to="`/mensagens/${dailyMessage.slug}`"
+            :to="`/mensagens/${currentMessage.slug}`"
             label="Ler mensagem completa"
             trailing-icon="i-lucide-arrow-right"
           />
@@ -53,7 +68,7 @@ const saved = ref(false)
             size="sm"
           /><div>
             <p class="text-sm font-medium">
-              {{ dailyMessage.author }}
+              {{ currentMessage.author }}
             </p><p class="text-xs text-muted">
               Conteúdo pastoral
             </p>

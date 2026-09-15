@@ -62,17 +62,17 @@ const shortcuts = [
   },
   {
     title: 'Pessoas e permissões',
-    description: 'Convites, funções e permissões administrativas.',
+    description: 'Perfis, papéis atuais e solicitações de participação.',
     icon: 'i-lucide-shield-check',
-    to: '',
-    action: 'Próximo módulo'
+    to: '/admin/pessoas',
+    action: 'Gerenciar pessoas'
   },
   {
     title: 'Conteúdo e avisos',
     description: 'Publicações, mensagens diárias e comunicados internos.',
     icon: 'i-lucide-megaphone',
-    to: '',
-    action: 'Próximo módulo'
+    to: '/admin/conteudo',
+    action: 'Gerenciar conteúdo'
   },
   {
     title: 'Agenda e eventos',
@@ -88,7 +88,7 @@ const pendingItems = computed(() => [
     label: 'Solicitações de participação',
     value: dashboard.pendingMemberships,
     icon: 'i-lucide-user-round-plus',
-    to: '/celulas'
+    to: '/admin/pessoas?view=pending'
   },
   {
     label: 'Pedidos para acompanhamento pastoral',
@@ -310,7 +310,7 @@ onMounted(loadDashboard)
 
           <template #footer>
             <p class="text-sm leading-6 text-muted">
-              Os módulos de pessoas, conteúdo e agenda serão construídos a partir desta base.
+              Pessoas e solicitações já estão disponíveis. Conteúdo e agenda serão os próximos módulos.
             </p>
           </template>
         </UCard>

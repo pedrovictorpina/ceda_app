@@ -1,15 +1,30 @@
 <script setup lang="ts">
 import { dailyMessage } from '~/data/contentCatalog'
+import type { PublishedEditorialItem } from '~/composables/usePublishedEditorial'
 
 definePageMeta({ middleware: 'auth' })
 const route = useRoute()
-useSeoMeta({ title: dailyMessage.title, description: dailyMessage.excerpt })
-
 const copied = ref(false)
-const isKnownMessage = computed(() => route.params.id === dailyMessage.slug || route.params.id === 'exemplo')
+const publishedMessage = ref<PublishedEditorialItem | null>(null)
+const currentMessage = computed(() => publishedMessage.value
+  ? {
+      slug: publishedMessage.value.slug,
+      title: publishedMessage.value.title,
+      excerpt: publishedMessage.value.content.split(/\n\s*\n/)[0] || publishedMessage.value.content,
+      body: publishedMessage.value.content.split(/\n\s*\n/).filter(Boolean),
+      reference: 'Palavra do Dia',
+      author: 'Equipe pastoral CEDA'
+    }
+  : dailyMessage)
+const isKnownMessage = computed(() => Boolean(publishedMessage.value) || route.params.id === dailyMessage.slug || route.params.id === 'exemplo')
+useSeoMeta({ title: () => currentMessage.value.title, description: () => currentMessage.value.excerpt })
+
+onMounted(async () => {
+  publishedMessage.value = await usePublishedEditorial().bySlug('word_of_day', String(route.params.id))
+})
 
 async function shareMessage() {
-  const payload = { title: dailyMessage.title, text: dailyMessage.excerpt, url: window.location.href }
+  const payload = { title: currentMessage.value.title, text: currentMessage.value.excerpt, url: window.location.href }
   if (navigator.share) await navigator.share(payload)
   else {
     await navigator.clipboard.writeText(window.location.href)
@@ -29,22 +44,22 @@ async function shareMessage() {
     ><UIcon name="i-lucide-arrow-left" />Voltar para Palavra do Dia</NuxtLink>
     <div class="rounded-2xl border border-default bg-gradient-to-br from-primary/10 via-default to-default p-6 sm:p-10">
       <div class="flex flex-wrap items-center gap-3">
-        <UBadge :label="dailyMessage.eyebrow" /><span class="text-sm text-muted">{{ dailyMessage.readTime }}</span>
+        <UBadge label="Palavra do Dia" /><span class="text-sm text-muted">Conteúdo pastoral</span>
       </div>
       <p class="mt-8 text-sm font-semibold uppercase tracking-[0.18em] text-primary">
-        {{ dailyMessage.reference }}
+        {{ currentMessage.reference }}
       </p>
       <h1 class="mt-3 text-4xl font-black tracking-tight sm:text-5xl">
-        {{ dailyMessage.title }}
+        {{ currentMessage.title }}
       </h1>
       <p class="mt-5 text-xl leading-8 text-muted">
-        {{ dailyMessage.excerpt }}
+        {{ currentMessage.excerpt }}
       </p>
     </div>
 
     <div class="mt-10 space-y-6 text-lg leading-8">
       <p
-        v-for="paragraph in dailyMessage.body"
+        v-for="paragraph in currentMessage.body"
         :key="paragraph"
       >
         {{ paragraph }}
@@ -54,7 +69,7 @@ async function shareMessage() {
     <blockquote class="my-10 border-l-4 border-primary bg-primary/5 p-5 text-lg italic leading-8">
       “Lâmpada para os meus pés é tua palavra e luz para o meu caminho.”
       <footer class="mt-2 text-sm not-italic text-muted">
-        {{ dailyMessage.reference }}
+        {{ currentMessage.reference }}
       </footer>
     </blockquote>
 
@@ -62,7 +77,7 @@ async function shareMessage() {
       <div class="flex items-center gap-3">
         <UAvatar fallback="EP" /><div>
           <p class="font-medium">
-            {{ dailyMessage.author }}
+            {{ currentMessage.author }}
           </p><p class="text-sm text-muted">
             Publicado hoje
           </p>

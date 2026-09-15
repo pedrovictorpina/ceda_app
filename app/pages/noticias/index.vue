@@ -5,10 +5,24 @@ definePageMeta({ middleware: 'auth' })
 useSeoMeta({ title: 'Notícias' })
 
 const query = ref('')
+const publishedNews = ref<Array<{ slug: string, category: string, title: string, excerpt: string, date: string, icon: string }>>([])
+const visibleNews = computed(() => publishedNews.value.length ? publishedNews.value : newsItems)
 const filteredNews = computed(() => {
   const term = query.value.trim().toLocaleLowerCase('pt-BR')
-  if (!term) return newsItems
-  return newsItems.filter(item => `${item.title} ${item.excerpt} ${item.category}`.toLocaleLowerCase('pt-BR').includes(term))
+  if (!term) return visibleNews.value
+  return visibleNews.value.filter(item => `${item.title} ${item.excerpt} ${item.category}`.toLocaleLowerCase('pt-BR').includes(term))
+})
+
+onMounted(async () => {
+  const items = await usePublishedEditorial().list('news')
+  publishedNews.value = items.map(item => ({
+    slug: item.slug,
+    category: 'Comunicado',
+    title: item.title,
+    excerpt: item.content.split(/\n\s*\n/)[0] || item.content,
+    date: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(item.message_date)),
+    icon: 'i-lucide-megaphone'
+  }))
 })
 </script>
 

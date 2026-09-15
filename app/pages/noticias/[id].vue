@@ -1,10 +1,26 @@
 <script setup lang="ts">
 import { newsItems } from '~/data/contentCatalog'
+import type { PublishedEditorialItem } from '~/composables/usePublishedEditorial'
 
 definePageMeta({ middleware: 'auth' })
 const route = useRoute()
-const item = computed(() => newsItems.find(entry => entry.slug === route.params.id))
+const publishedItem = ref<PublishedEditorialItem | null>(null)
+const fallbackItem = computed(() => newsItems.find(entry => entry.slug === route.params.id))
+const item = computed(() => publishedItem.value
+  ? {
+      title: publishedItem.value.title,
+      excerpt: publishedItem.value.content.split(/\n\s*\n/)[0] || publishedItem.value.content,
+      body: publishedItem.value.content.split(/\n\s*\n/).filter(Boolean),
+      category: 'Comunicado',
+      date: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(publishedItem.value.message_date)),
+      icon: 'i-lucide-megaphone'
+    }
+  : fallbackItem.value ? { ...fallbackItem.value, body: [] as string[] } : null)
 useSeoMeta({ title: () => item.value?.title || 'Notícia' })
+
+onMounted(async () => {
+  publishedItem.value = await usePublishedEditorial().bySlug('news', String(route.params.id))
+})
 </script>
 
 <template>
@@ -36,8 +52,18 @@ useSeoMeta({ title: () => item.value?.title || 'Notícia' })
       {{ item.excerpt }}
     </p>
     <div class="mt-8 space-y-5 text-lg leading-8">
-      <p>Esta publicação reúne as principais informações para que você acompanhe a vida da comunidade e participe com tranquilidade.</p>
-      <p>Consulte a agenda do aplicativo para conferir horários e detalhes atualizados. Em caso de dúvida, use os canais oficiais antes de se deslocar.</p>
+      <template v-if="item.body.length">
+        <p
+          v-for="paragraph in item.body"
+          :key="paragraph"
+        >
+          {{ paragraph }}
+        </p>
+      </template>
+      <template v-else>
+        <p>Esta publicação reúne as principais informações para que você acompanhe a vida da comunidade e participe com tranquilidade.</p>
+        <p>Consulte a agenda do aplicativo para conferir horários e detalhes atualizados. Em caso de dúvida, use os canais oficiais antes de se deslocar.</p>
+      </template>
     </div>
     <div class="mt-10 rounded-xl bg-elevated p-5">
       <h2 class="font-semibold">
