@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { canManageChurch } from '~/utils/authorization'
+import type { NavigationItem } from '~/types/domain'
 
 const props = withDefaults(defineProps<{ section?: string }>(), { section: 'Membros' })
 const route = useRoute()
@@ -7,11 +8,39 @@ const auth = useAuthStore()
 const { visibleItems } = useAppNavigation()
 const sidebarCollapsed = ref(false)
 const menuOpen = ref(false)
+const collapsedGroups = ref<Record<string, boolean>>({
+  community: true,
+  church: true,
+  more: true,
+  account: true
+})
 
 const mobilePrimary = computed(() => visibleItems.value.filter(item => ['/inicio', '/eventos', '/notificacoes'].includes(item.to)))
-const sidebarItems = computed(() => visibleItems.value.filter(item => !item.webOnly || !menuOpen.value))
+const menuItems = computed(() => visibleItems.value.filter(item => !item.webOnly || !menuOpen.value))
+const menuGroups = computed(() => {
+  const definitions: Array<{ id: NonNullable<NavigationItem['group']>, label: string, icon: string, collapsible: boolean }> = [
+    { id: 'main', label: 'Principal', icon: 'i-lucide-house', collapsible: false },
+    { id: 'community', label: 'Comunidade', icon: 'i-lucide-users', collapsible: true },
+    { id: 'church', label: 'Igreja', icon: 'i-lucide-landmark', collapsible: true },
+    { id: 'more', label: 'Mais', icon: 'i-lucide-ellipsis', collapsible: true },
+    { id: 'account', label: 'Conta', icon: 'i-lucide-circle-user-round', collapsible: true },
+    { id: 'administration', label: 'Administração', icon: 'i-lucide-shield-check', collapsible: false }
+  ]
+  return definitions.map(group => ({
+    ...group,
+    items: menuItems.value.filter(item => item.group === group.id)
+  })).filter(group => group.items.length)
+})
 const canUseAdminView = computed(() => canManageChurch(auth.profile))
 const isAdminView = computed(() => route.path.startsWith('/admin'))
+
+function isGroupOpen(id: string, collapsible: boolean, items: NavigationItem[]) {
+  return !collapsible || !collapsedGroups.value[id] || items.some(item => route.path.startsWith(item.to))
+}
+
+function toggleGroup(id: string) {
+  collapsedGroups.value[id] = !collapsedGroups.value[id]
+}
 
 function closeOnEscape(event: KeyboardEvent) {
   if (event.key === 'Escape') menuOpen.value = false
@@ -101,25 +130,55 @@ async function changeView(view: 'member' | 'administrator') {
     >
       <nav
         aria-label="Navegação principal"
-        class="sidebar-scroll-left flex-1 space-y-1 overflow-y-auto"
+        class="sidebar-scroll-left flex-1 space-y-3 overflow-y-auto"
       >
-        <NuxtLink
-          v-for="item in visibleItems"
-          :key="item.to"
-          :to="item.to"
-          class="focus-ring flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition hover:bg-elevated"
-          :class="route.path.startsWith(item.to) ? 'bg-primary/10 text-primary' : 'text-muted'"
-          :title="sidebarCollapsed ? item.label : undefined"
+        <section
+          v-for="group in menuGroups"
+          :key="group.id"
+          class="space-y-1"
         >
-          <UIcon
-            :name="item.icon"
-            class="size-5 shrink-0"
-          />
-          <span
-            v-if="!sidebarCollapsed"
-            class="truncate"
-          >{{ item.label }}</span>
-        </NuxtLink>
+          <button
+            v-if="!sidebarCollapsed && group.collapsible"
+            type="button"
+            class="focus-ring flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted hover:bg-elevated"
+            :aria-expanded="isGroupOpen(group.id, group.collapsible, group.items)"
+            @click="toggleGroup(group.id)"
+          >
+            <span>{{ group.label }}</span>
+            <UIcon
+              :name="isGroupOpen(group.id, group.collapsible, group.items) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+              class="size-4"
+            />
+          </button>
+          <p
+            v-else-if="!sidebarCollapsed && !group.collapsible"
+            class="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted"
+          >
+            {{ group.label }}
+          </p>
+          <div
+            v-show="sidebarCollapsed || isGroupOpen(group.id, group.collapsible, group.items)"
+            class="space-y-1"
+          >
+            <NuxtLink
+              v-for="item in group.items"
+              :key="item.to"
+              :to="item.to"
+              class="focus-ring flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition hover:bg-elevated"
+              :class="route.path.startsWith(item.to) ? 'bg-primary/10 text-primary' : 'text-muted'"
+              :title="sidebarCollapsed ? item.label : undefined"
+            >
+              <UIcon
+                :name="item.icon"
+                class="size-5 shrink-0"
+              />
+              <span
+                v-if="!sidebarCollapsed"
+                class="truncate"
+              >{{ item.label }}</span>
+            </NuxtLink>
+          </div>
+        </section>
       </nav>
       <div class="mt-3 border-t border-default pt-3">
         <UButton
@@ -202,19 +261,49 @@ async function changeView(view: 'member' | 'administrator') {
             @click="menuOpen = false"
           />
         </div>
-        <nav class="space-y-1">
-          <NuxtLink
-            v-for="item in sidebarItems"
-            :key="item.to"
-            :to="item.to"
-            class="focus-ring flex items-center gap-3 rounded-lg px-3 py-3 text-sm"
-            @click="menuOpen = false"
+        <nav class="space-y-3">
+          <section
+            v-for="group in menuGroups"
+            :key="group.id"
+            class="space-y-1"
           >
-            <UIcon
-              :name="item.icon"
-              class="size-5"
-            />{{ item.label }}
-          </NuxtLink>
+            <button
+              v-if="group.collapsible"
+              type="button"
+              class="focus-ring flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted hover:bg-elevated"
+              :aria-expanded="isGroupOpen(group.id, group.collapsible, group.items)"
+              @click="toggleGroup(group.id)"
+            >
+              <span>{{ group.label }}</span>
+              <UIcon
+                :name="isGroupOpen(group.id, group.collapsible, group.items) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+                class="size-4"
+              />
+            </button>
+            <p
+              v-else
+              class="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted"
+            >
+              {{ group.label }}
+            </p>
+            <div
+              v-show="isGroupOpen(group.id, group.collapsible, group.items)"
+              class="space-y-1"
+            >
+              <NuxtLink
+                v-for="item in group.items"
+                :key="item.to"
+                :to="item.to"
+                class="focus-ring flex items-center gap-3 rounded-lg px-3 py-3 text-sm"
+                @click="menuOpen = false"
+              >
+                <UIcon
+                  :name="item.icon"
+                  class="size-5"
+                />{{ item.label }}
+              </NuxtLink>
+            </div>
+          </section>
         </nav>
         <div class="mt-4 border-t border-default pt-4">
           <UButton

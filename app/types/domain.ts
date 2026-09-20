@@ -1,4 +1,4 @@
-export type SystemRole = 'member' | 'administrator' | 'pastor'
+export type SystemRole = 'member' | 'administrator' | 'pastor' | 'cashier' | 'counter'
 export type MinistryRole = 'leader' | 'member'
 export type CommunityVisibility = 'members' | 'private'
 export type EventKind = 'service' | 'event' | 'meeting' | 'rehearsal' | 'activity'
@@ -22,6 +22,7 @@ export interface NavigationItem {
   label: string
   icon: string
   to: string
+  group?: 'main' | 'community' | 'church' | 'more' | 'account' | 'administration'
   requires?: SystemRole | 'guardian'
   webOnly?: boolean
 }

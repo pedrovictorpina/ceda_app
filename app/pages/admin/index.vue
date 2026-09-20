@@ -75,11 +75,18 @@ const shortcuts = [
     action: 'Gerenciar conteúdo'
   },
   {
+    title: 'Auditoria',
+    description: 'Acompanhe decisões administrativas e alterações editoriais.',
+    icon: 'i-lucide-scroll-text',
+    to: '/admin/auditoria',
+    action: 'Ver histórico'
+  },
+  {
     title: 'Agenda e eventos',
     description: 'Programação, responsáveis e lembretes para a comunidade.',
     icon: 'i-lucide-calendar-cog',
-    to: '',
-    action: 'Próximo módulo'
+    to: '/admin/agenda',
+    action: 'Gerenciar agenda'
   }
 ]
 
@@ -310,7 +317,7 @@ onMounted(loadDashboard)
 
           <template #footer>
             <p class="text-sm leading-6 text-muted">
-              Pessoas e solicitações já estão disponíveis. Conteúdo e agenda serão os próximos módulos.
+              Pessoas, conteúdo e agenda já estão disponíveis para a gestão.
             </p>
           </template>
         </UCard>

@@ -12,6 +12,11 @@ export default defineNuxtConfig({
   },
   css: ['~/assets/css/main.css'],
   runtimeConfig: {
+    // Server-only. Never prefix this value with NUXT_PUBLIC_.
+    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    // Server-only provider selector. Delivery is intentionally disabled until
+    // a server-side adapter and its provider credentials are configured.
+    pushProvider: process.env.PUSH_PROVIDER || 'unconfigured',
     public: {
       supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL || '',
       supabasePublishableKey: process.env.NUXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '',

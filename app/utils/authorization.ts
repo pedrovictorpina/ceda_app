@@ -8,6 +8,10 @@ export function canManageChurch(profile: SessionProfile | null): boolean {
   return hasRole(profile, 'administrator') || hasRole(profile, 'pastor')
 }
 
+export function canOperateStore(profile: SessionProfile | null): boolean {
+  return canManageChurch(profile) || hasRole(profile, 'cashier') || hasRole(profile, 'counter')
+}
+
 export function canAccessChildren(profile: SessionProfile | null): boolean {
   return profile?.isApprovedGuardian === true || profile?.isChildrenTeam === true || hasRole(profile, 'administrator')
 }

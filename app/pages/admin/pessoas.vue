@@ -31,20 +31,29 @@ interface PendingRequest {
   createdAt: string
 }
 
+interface RoleUpdateError {
+  data?: { statusMessage?: string }
+  message?: string
+}
+
 const auth = useAuthStore()
 const route = useRoute()
 const loading = ref(true)
 const savingRequest = ref('')
+const savingRole = ref('')
 const loadError = ref('')
 const feedback = ref('')
 const search = ref('')
 const members = ref<ProfileRow[]>([])
 const roleRows = ref<Array<{ user_id: string, role: SystemRole }>>([])
 const pendingRequests = ref<PendingRequest[]>([])
+const canManageRoles = computed(() => auth.profile?.roles.includes('administrator') ?? false)
 
 const roleLabels: Record<SystemRole, string> = {
   administrator: 'Administrador',
   pastor: 'Pastor',
+  cashier: 'Caixa e estoque',
+  counter: 'Balcão',
   member: 'Membro'
 }
 
@@ -145,6 +154,42 @@ async function reviewRequest(request: PendingRequest, status: 'approved' | 'reje
   feedback.value = status === 'approved'
     ? `${request.memberName} agora participa de ${request.communityName}.`
     : `A solicitação de ${request.memberName} foi recusada.`
+}
+
+function hasMemberRole(memberId: string, role: SystemRole) {
+  return memberRoles.value.get(memberId)?.includes(role) ?? false
+}
+
+async function updateSystemRole(member: ProfileRow, role: Exclude<SystemRole, 'member'>, enabled: boolean) {
+  const { $supabase } = useNuxtApp()
+  if (!$supabase) return
+
+  const roleKey = `${member.id}:${role}`
+  savingRole.value = roleKey
+  feedback.value = ''
+  try {
+    const { data: { session } } = await $supabase.auth.getSession()
+    if (!session?.access_token) throw new Error('A sessão administrativa expirou.')
+
+    const result = await $fetch<{ roles: SystemRole[], sessionRefreshRequired: boolean }>('/api/admin/roles', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session.access_token}` },
+      body: { userId: member.id, role, enabled }
+    })
+
+    roleRows.value = [
+      ...roleRows.value.filter(item => item.user_id !== member.id),
+      ...result.roles.map(currentRole => ({ user_id: member.id, role: currentRole }))
+    ]
+    feedback.value = enabled
+      ? `${member.full_name} recebeu o papel de ${roleLabels[role]}. A pessoa precisará renovar a sessão para receber o novo acesso.`
+      : `O papel de ${roleLabels[role]} foi removido de ${member.full_name}. As sessões existentes perderão o acesso ao renovar.`
+  } catch (error: unknown) {
+    const safeError = error as RoleUpdateError
+    feedback.value = safeError.data?.statusMessage || safeError.message || 'Não foi possível alterar o papel do usuário.'
+  } finally {
+    savingRole.value = ''
+  }
 }
 
 onMounted(loadPeople)
@@ -364,9 +409,51 @@ onMounted(loadPeople)
           </div>
 
           <template #footer>
-            <p class="text-xs text-muted">
-              Cadastro em {{ formatDate(member.created_at) }}
-            </p>
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <p class="text-xs text-muted">
+                Cadastro em {{ formatDate(member.created_at) }}
+              </p>
+              <div
+                v-if="canManageRoles"
+                class="flex flex-wrap gap-2"
+              >
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  :variant="hasMemberRole(member.id, 'pastor') ? 'solid' : 'outline'"
+                  :label="hasMemberRole(member.id, 'pastor') ? 'Remover pastor' : 'Tornar pastor'"
+                  :loading="savingRole === `${member.id}:pastor`"
+                  :disabled="Boolean(savingRole) || member.id === auth.profile?.id"
+                  @click="updateSystemRole(member, 'pastor', !hasMemberRole(member.id, 'pastor'))"
+                />
+                <UButton
+                  size="xs"
+                  :variant="hasMemberRole(member.id, 'administrator') ? 'solid' : 'outline'"
+                  :label="hasMemberRole(member.id, 'administrator') ? 'Remover admin' : 'Tornar admin'"
+                  :loading="savingRole === `${member.id}:administrator`"
+                  :disabled="Boolean(savingRole) || member.id === auth.profile?.id"
+                  @click="updateSystemRole(member, 'administrator', !hasMemberRole(member.id, 'administrator'))"
+                />
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  :variant="hasMemberRole(member.id, 'cashier') ? 'solid' : 'outline'"
+                  :label="hasMemberRole(member.id, 'cashier') ? 'Remover caixa' : 'Tornar caixa'"
+                  :loading="savingRole === `${member.id}:cashier`"
+                  :disabled="Boolean(savingRole) || member.id === auth.profile?.id"
+                  @click="updateSystemRole(member, 'cashier', !hasMemberRole(member.id, 'cashier'))"
+                />
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  :variant="hasMemberRole(member.id, 'counter') ? 'solid' : 'outline'"
+                  :label="hasMemberRole(member.id, 'counter') ? 'Remover balcão' : 'Tornar balcão'"
+                  :loading="savingRole === `${member.id}:counter`"
+                  :disabled="Boolean(savingRole) || member.id === auth.profile?.id"
+                  @click="updateSystemRole(member, 'counter', !hasMemberRole(member.id, 'counter'))"
+                />
+              </div>
+            </div>
           </template>
         </UCard>
       </div>
