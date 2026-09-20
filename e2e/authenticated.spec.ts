@@ -17,18 +17,18 @@ test('local signup, persistence choice and responsive member navigation work end
   await page.goto('/entrar')
   await page.getByLabel('E-mail').fill(uniqueEmail)
   await page.getByLabel('Senha', { exact: true }).fill(password)
-  await expect(page.getByRole('checkbox', { name: 'Lembrar meu acesso' })).not.toBeChecked()
+  await expect(page.getByRole('checkbox', { name: 'Lembrar meu acesso' })).toBeChecked()
   await page.getByRole('button', { name: 'Entrar', exact: true }).click()
   await expect(page).toHaveURL(/\/inicio$/, { timeout: 15_000 })
 
-  const tabOnlySession = await page.evaluate(secret => ({
+  const durableSession = await page.evaluate(secret => ({
     durableAuthKeys: Object.keys(localStorage).filter(key => key.includes('auth-token')),
     tabAuthKeys: Object.keys(sessionStorage).filter(key => key.includes('auth-token')),
     passwordStored: JSON.stringify({ ...localStorage, ...sessionStorage }).includes(secret)
   }), password)
-  expect(tabOnlySession.durableAuthKeys).toHaveLength(0)
-  expect(tabOnlySession.tabAuthKeys.length).toBeGreaterThan(0)
-  expect(tabOnlySession.passwordStored).toBe(false)
+  expect(durableSession.durableAuthKeys.length).toBeGreaterThan(0)
+  expect(durableSession.tabAuthKeys).toHaveLength(0)
+  expect(durableSession.passwordStored).toBe(false)
 
   await expect(page.getByRole('navigation', { name: 'Navegação principal' }).getByText('Palavra do Dia')).toBeVisible()
 

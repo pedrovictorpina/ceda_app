@@ -2,7 +2,7 @@
 definePageMeta({ layout: 'public' })
 useSeoMeta({ title: 'Entrar' })
 const auth = useAuthStore()
-const form = reactive({ email: '', password: '', rememberAccess: false })
+const form = reactive({ email: '', password: '', rememberAccess: true })
 const pending = ref(false)
 const errorMessage = ref('')
 const passwordVisible = ref(false)
@@ -93,7 +93,7 @@ async function submit() {
         <UCheckbox
           v-model="form.rememberAccess"
           label="Lembrar meu acesso"
-          description="Mantém a sessão neste dispositivo. A senha nunca é armazenada."
+          description="Mantém a sessão neste dispositivo, inclusive após atualizações. A senha nunca é armazenada."
         />
         <UButton
           type="submit"

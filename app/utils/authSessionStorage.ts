@@ -14,7 +14,10 @@ export class RememberedSessionStorage {
     private readonly durableStorage: BrowserStorage,
     private readonly tabStorage: BrowserStorage
   ) {
-    this.remembered = durableStorage.getItem(REMEMBER_ACCESS_KEY) === 'true'
+    // Access remains active by default so a normal refresh, PWA reload, or a
+    // newly deployed version never makes a member sign in again. Members can
+    // still explicitly opt out and keep access only for the current tab.
+    this.remembered = durableStorage.getItem(REMEMBER_ACCESS_KEY) !== 'false'
   }
 
   get rememberAccess(): boolean {
@@ -22,7 +25,10 @@ export class RememberedSessionStorage {
   }
 
   setRememberAccess(value: boolean): void {
-    if (value === this.remembered) return
+    if (value === this.remembered) {
+      this.durableStorage.setItem(REMEMBER_ACCESS_KEY, String(value))
+      return
+    }
     const source = this.remembered ? this.durableStorage : this.tabStorage
     const target = value ? this.durableStorage : this.tabStorage
 
@@ -33,13 +39,23 @@ export class RememberedSessionStorage {
     }
 
     this.remembered = value
-    if (value) this.durableStorage.setItem(REMEMBER_ACCESS_KEY, 'true')
-    else this.durableStorage.removeItem(REMEMBER_ACCESS_KEY)
+    this.durableStorage.setItem(REMEMBER_ACCESS_KEY, String(value))
   }
 
   getItem(key: string): string | null {
     this.trackedKeys.add(key)
-    return this.activeStorage.getItem(key)
+    const value = this.activeStorage.getItem(key)
+    if (value !== null || !this.remembered) return value
+
+    // Upgrade sessions created before persistent access became the default.
+    // This runs only for the active Supabase session key and never stores a
+    // password (Supabase stores tokens, not the submitted password).
+    const legacyValue = this.tabStorage.getItem(key)
+    if (legacyValue !== null) {
+      this.durableStorage.setItem(key, legacyValue)
+      this.tabStorage.removeItem(key)
+    }
+    return legacyValue
   }
 
   setItem(key: string, value: string): void {

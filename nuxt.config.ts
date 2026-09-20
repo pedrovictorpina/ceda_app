@@ -35,7 +35,9 @@ export default defineNuxtConfig({
     }
   },
   pwa: {
-    registerType: 'autoUpdate',
+    // Do not replace a running version in the background. The app presents an
+    // explicit update action so members can finish what they are doing first.
+    registerType: 'prompt',
     manifest: {
       name: 'CEDA',
       short_name: 'CEDA',

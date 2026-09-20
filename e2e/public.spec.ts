@@ -48,7 +48,7 @@ test('login exposes secure access controls and registration link', async ({ page
   await page.getByRole('button', { name: 'Mostrar senha' }).click()
   await expect(password).toHaveAttribute('type', 'text')
   await expect(page.getByRole('button', { name: 'Ocultar senha' })).toBeVisible()
-  await expect(page.getByRole('checkbox', { name: 'Lembrar meu acesso' })).not.toBeChecked()
+  await expect(page.getByRole('checkbox', { name: 'Lembrar meu acesso' })).toBeChecked()
   await page.getByRole('link', { name: 'Criar cadastro' }).click()
   await expect(page).toHaveURL(/\/cadastro$/)
 })

@@ -9,37 +9,34 @@ class MemoryStorage implements BrowserStorage {
 }
 
 describe('remembered Supabase session storage', () => {
-  it('uses tab storage by default', () => {
+  it('uses durable storage by default so refreshes keep the session', () => {
     const durable = new MemoryStorage()
     const tab = new MemoryStorage()
     const storage = new RememberedSessionStorage(durable, tab)
     storage.setItem('sb-auth-token', 'session')
-    expect(tab.getItem('sb-auth-token')).toBe('session')
-    expect(durable.getItem('sb-auth-token')).toBeNull()
-  })
-
-  it('uses durable storage only after explicit opt-in', () => {
-    const durable = new MemoryStorage()
-    const tab = new MemoryStorage()
-    const storage = new RememberedSessionStorage(durable, tab)
-    storage.getItem('sb-auth-token')
-    storage.setRememberAccess(true)
-    storage.setItem('sb-auth-token', 'session')
-    expect(durable.getItem(REMEMBER_ACCESS_KEY)).toBe('true')
     expect(durable.getItem('sb-auth-token')).toBe('session')
     expect(tab.getItem('sb-auth-token')).toBeNull()
   })
 
-  it('moves a tracked session back to tab storage when disabled', () => {
+  it('uses tab storage when the member explicitly opts out', () => {
     const durable = new MemoryStorage()
-    durable.setItem(REMEMBER_ACCESS_KEY, 'true')
-    durable.setItem('sb-auth-token', 'session')
     const tab = new MemoryStorage()
     const storage = new RememberedSessionStorage(durable, tab)
-    storage.getItem('sb-auth-token')
     storage.setRememberAccess(false)
+    storage.setItem('sb-auth-token', 'session')
+    expect(durable.getItem(REMEMBER_ACCESS_KEY)).toBe('false')
     expect(durable.getItem('sb-auth-token')).toBeNull()
     expect(tab.getItem('sb-auth-token')).toBe('session')
+  })
+
+  it('migrates a legacy tab-only session to durable storage', () => {
+    const durable = new MemoryStorage()
+    const tab = new MemoryStorage()
+    tab.setItem('sb-auth-token', 'session')
+    const storage = new RememberedSessionStorage(durable, tab)
+    expect(storage.getItem('sb-auth-token')).toBe('session')
+    expect(durable.getItem('sb-auth-token')).toBe('session')
+    expect(tab.getItem('sb-auth-token')).toBeNull()
   })
 
   it('removes session data from both stores', () => {

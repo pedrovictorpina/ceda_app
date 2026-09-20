@@ -14,5 +14,8 @@ useHead({
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>
+    <ClientOnly>
+      <AppUpdateNotice />
+    </ClientOnly>
   </UApp>
 </template>
