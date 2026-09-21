@@ -29,6 +29,7 @@ const placingOrder = ref(false)
 const feedback = ref('')
 
 const cartTotal = computed(() => cart.value.reduce((total, item) => total + item.sale_price * item.quantity, 0))
+const cartItemsCount = computed(() => cart.value.reduce((total, item) => total + item.quantity, 0))
 const statusLabels: Record<Order['status'], string> = {
   awaiting_payment: 'Aguardando caixa',
   ready_for_pickup: 'Pronto para retirada',
@@ -70,6 +71,16 @@ function addToCart(product: Product) {
 
 function removeFromCart(productId: string) {
   cart.value = cart.value.filter(item => item.id !== productId)
+}
+
+function updateCartQuantity(productId: string, nextQuantity: number) {
+  const item = cart.value.find(entry => entry.id === productId)
+  if (!item) return
+  if (nextQuantity <= 0) {
+    removeFromCart(productId)
+    return
+  }
+  item.quantity = Math.min(item.stock_available, Math.floor(nextQuantity))
 }
 
 async function placeOrder() {
@@ -130,9 +141,30 @@ onMounted(loadStore)
       variant="subtle"
       :description="feedback"
     />
-    <div class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+    <div class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_23rem]">
       <section>
-        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
+              Catálogo
+            </p>
+            <h2 class="mt-1 text-2xl font-bold tracking-tight">
+              Escolha o que precisa
+            </h2>
+            <p class="mt-1 text-sm text-muted">
+              A disponibilidade é atualizada quando o pedido é enviado.
+            </p>
+          </div>
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-refresh-cw"
+            :loading="loading"
+            label="Atualizar"
+            @click="loadStore"
+          />
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
           <template v-if="loading">
             <USkeleton
               v-for="index in 6"
@@ -143,21 +175,42 @@ onMounted(loadStore)
           <UCard
             v-for="product in products"
             :key="product.id"
+            class="group overflow-hidden transition duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/5"
           >
-            <p class="text-lg font-semibold">
+            <div class="flex items-start justify-between gap-3">
+              <div class="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                <UIcon
+                  name="i-lucide-shopping-bag"
+                  class="size-5"
+                />
+              </div>
+              <UBadge
+                color="success"
+                variant="subtle"
+                :label="`${product.stock_available} em estoque`"
+              />
+            </div>
+            <p class="mt-5 text-lg font-semibold leading-tight">
               {{ product.name }}
             </p>
-            <p class="mt-2 min-h-10 text-sm text-muted">
-              {{ product.description || 'Sem descrição.' }}
+            <p class="mt-2 min-h-10 text-sm leading-5 text-muted">
+              {{ product.description || 'Item disponível para pedido.' }}
             </p>
-            <p class="mt-4 text-xl font-bold text-primary">
-              {{ formatMoney(product.sale_price) }}
-            </p>
-            <p class="mt-1 text-xs text-muted">
-              {{ product.stock_available }} disponível(is)
-            </p>
+            <div class="mt-5 flex items-end justify-between gap-3">
+              <div>
+                <p class="text-xs font-medium uppercase tracking-wide text-muted">
+                  Preço
+                </p>
+                <p class="mt-1 text-xl font-bold text-primary">
+                  {{ formatMoney(product.sale_price) }}
+                </p>
+              </div>
+              <p class="text-right text-xs text-muted">
+                Reserva<br>em tempo real
+              </p>
+            </div>
             <template #footer>
-              <div class="flex gap-2">
+              <div class="flex items-center gap-2">
                 <UInput
                   v-model.number="quantities[product.id]"
                   class="w-20"
@@ -165,6 +218,7 @@ onMounted(loadStore)
                   min="1"
                   :max="product.stock_available"
                   placeholder="1"
+                  aria-label="Quantidade"
                 />
                 <UButton
                   class="flex-1"
@@ -177,20 +231,42 @@ onMounted(loadStore)
           </UCard>
           <UCard
             v-if="!loading && !products.length"
-            class="sm:col-span-2 xl:col-span-3"
+            class="sm:col-span-2 2xl:col-span-3"
           >
-            <p class="text-sm text-muted">
-              Não há itens disponíveis no momento.
-            </p>
+            <div class="flex flex-col items-center py-8 text-center">
+              <div class="grid size-12 place-items-center rounded-full bg-muted">
+                <UIcon
+                  name="i-lucide-package-x"
+                  class="size-6 text-muted"
+                />
+              </div>
+              <p class="mt-4 font-semibold">
+                Nenhum item disponível agora
+              </p>
+              <p class="mt-1 max-w-sm text-sm text-muted">
+                Volte em alguns instantes: o catálogo aparece assim que o caixa registra uma entrada de estoque.
+              </p>
+            </div>
           </UCard>
         </div>
       </section>
-      <aside class="space-y-5">
-        <UCard>
+      <aside class="space-y-5 xl:sticky xl:top-5 xl:self-start">
+        <UCard class="overflow-hidden">
           <template #header>
-            <h2 class="font-semibold">
-              Carrinho
-            </h2>
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <h2 class="font-semibold">
+                  Carrinho
+                </h2><p class="mt-0.5 text-sm text-muted">
+                  Revise antes de enviar
+                </p>
+              </div>
+              <UBadge
+                v-if="cartItemsCount"
+                color="primary"
+                :label="`${cartItemsCount} ${cartItemsCount === 1 ? 'item' : 'itens'}`"
+              />
+            </div>
           </template>
           <div
             v-if="cart.length"
@@ -199,27 +275,55 @@ onMounted(loadStore)
             <div
               v-for="item in cart"
               :key="item.id"
-              class="flex items-start justify-between gap-3 text-sm"
+              class="rounded-xl border border-default bg-elevated/40 p-3"
             >
-              <div>
-                <p class="font-medium">
-                  {{ item.name }}
-                </p><p class="text-muted">
-                  {{ item.quantity }} × {{ formatMoney(item.sale_price) }}
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="truncate font-medium">
+                    {{ item.name }}
+                  </p><p class="mt-1 text-sm text-muted">
+                    {{ formatMoney(item.sale_price) }} cada
+                  </p>
+                </div>
+                <p class="shrink-0 font-semibold">
+                  {{ formatMoney(item.sale_price * item.quantity) }}
                 </p>
               </div>
-              <UButton
-                color="error"
-                variant="ghost"
-                icon="i-lucide-trash-2"
-                :aria-label="`Remover ${item.name}`"
-                @click="removeFromCart(item.id)"
-              />
+              <div class="mt-3 flex items-center justify-between">
+                <div class="flex items-center rounded-lg border border-default">
+                  <UButton
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    icon="i-lucide-minus"
+                    :aria-label="`Diminuir ${item.name}`"
+                    @click="updateCartQuantity(item.id, item.quantity - 1)"
+                  />
+                  <span class="w-8 text-center text-sm font-semibold">{{ item.quantity }}</span>
+                  <UButton
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    icon="i-lucide-plus"
+                    :disabled="item.quantity >= item.stock_available"
+                    :aria-label="`Aumentar ${item.name}`"
+                    @click="updateCartQuantity(item.id, item.quantity + 1)"
+                  />
+                </div>
+                <UButton
+                  color="error"
+                  variant="ghost"
+                  size="xs"
+                  icon="i-lucide-trash-2"
+                  label="Remover"
+                  @click="removeFromCart(item.id)"
+                />
+              </div>
             </div>
           </div>
           <p
             v-else
-            class="text-sm text-muted"
+            class="rounded-xl border border-dashed border-default bg-elevated/40 p-4 text-sm leading-5 text-muted"
           >
             Adicione itens para criar um pedido.
           </p>
@@ -234,9 +338,11 @@ onMounted(loadStore)
             />
           </UFormField>
           <template #footer>
-            <p class="mb-3 text-lg font-bold">
-              Total: {{ formatMoney(cartTotal) }}
-            </p>
+            <div class="mb-4 flex items-end justify-between">
+              <span class="text-sm text-muted">Total do pedido</span><p class="text-xl font-bold text-primary">
+                {{ formatMoney(cartTotal) }}
+              </p>
+            </div>
             <UButton
               block
               :disabled="!cart.length"
@@ -245,13 +351,21 @@ onMounted(loadStore)
               icon="i-lucide-shopping-cart"
               @click="placeOrder"
             />
+            <p class="mt-3 text-center text-xs leading-4 text-muted">
+              O pedido reserva os itens. O pagamento e a retirada são confirmados pela equipe.
+            </p>
           </template>
         </UCard>
         <UCard>
           <template #header>
-            <h2 class="font-semibold">
-              Meus pedidos
-            </h2>
+            <div class="flex items-center gap-2">
+              <UIcon
+                name="i-lucide-receipt-text"
+                class="size-4 text-primary"
+              /><h2 class="font-semibold">
+                Meus pedidos
+              </h2>
+            </div>
           </template>
           <div
             v-if="orders.length"
@@ -260,7 +374,7 @@ onMounted(loadStore)
             <div
               v-for="order in orders"
               :key="order.id"
-              class="rounded-lg border border-default p-3"
+              class="rounded-xl border border-default p-3"
             >
               <div class="flex justify-between gap-2">
                 <p class="font-medium">
@@ -269,9 +383,13 @@ onMounted(loadStore)
                   variant="subtle"
                   :label="statusLabels[order.status]"
                 />
-              </div><p class="mt-1 text-sm text-muted">
-                {{ formatMoney(order.total_amount) }}
-              </p>
+              </div><div class="mt-2 flex items-center justify-between text-sm">
+                <p class="text-muted">
+                  {{ new Date(order.created_at).toLocaleDateString('pt-BR') }}
+                </p><p class="font-semibold">
+                  {{ formatMoney(order.total_amount) }}
+                </p>
+              </div>
             </div>
           </div>
           <p

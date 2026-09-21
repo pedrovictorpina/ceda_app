@@ -25,6 +25,7 @@ export function useAppNavigation() {
     { label: 'Perfil', icon: 'i-lucide-user-round', to: '/perfil', group: 'account' },
     { label: 'Política de Privacidade', icon: 'i-lucide-file-lock-2', to: '/privacidade', group: 'account' },
     { label: 'Caixa e estoque', icon: 'i-lucide-package-check', to: '/operacao', group: 'administration', requires: 'cashier' },
+    { label: 'Relatórios', icon: 'i-lucide-chart-no-axes-combined', to: '/operacao/relatorios', group: 'administration', requires: 'cashier' },
     { label: 'Administração', icon: 'i-lucide-shield-check', to: '/admin', group: 'administration', requires: 'administrator' }
   ]
   const visibleItems = computed(() => items.filter((item) => {
