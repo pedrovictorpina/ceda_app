@@ -30,6 +30,10 @@ test('local signup, persistence choice and responsive member navigation work end
   expect(durableSession.tabAuthKeys).toHaveLength(0)
   expect(durableSession.passwordStored).toBe(false)
 
+  await page.reload()
+  await expect(page).toHaveURL(/\/inicio$/, { timeout: 15_000 })
+  await expect(page.getByRole('navigation', { name: 'Navegação principal' })).toBeVisible()
+
   await expect(page.getByRole('navigation', { name: 'Navegação principal' }).getByText('Palavra do Dia')).toBeVisible()
 
   await page.goto('/entrar')
