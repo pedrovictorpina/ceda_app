@@ -60,6 +60,10 @@ async function safely(action: () => Promise<unknown>, clear?: () => void) {
 
 <template>
   <div>
+    <BrandLoadingStatus
+      v-if="cellStore.saving"
+      label="Salvando célula…"
+    />
     <div class="mb-5">
       <UButton
         to="/celulas"
@@ -74,7 +78,7 @@ async function safely(action: () => Promise<unknown>, clear?: () => void) {
       v-if="cellStore.loading"
       class="py-12 text-center text-muted"
     >
-      Carregando célula…
+      <BrandLoader label="Carregando célula…" />
     </div>
     <template v-else-if="detail">
       <PageIntro

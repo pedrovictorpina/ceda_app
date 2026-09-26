@@ -46,6 +46,10 @@ async function respond(invitationId: string | undefined, cellId: string, accepte
 
 <template>
   <div>
+    <BrandLoadingStatus
+      v-if="cellStore.saving"
+      label="Salvando célula…"
+    />
     <PageIntro
       title="Células"
       description="Acompanhe sua célula, convites, comunicados e enquetes em um espaço privado."
@@ -201,7 +205,7 @@ async function respond(invitationId: string | undefined, cellId: string, accepte
       v-if="cellStore.loading"
       class="py-12 text-center text-muted"
     >
-      Carregando células…
+      <BrandLoader label="Carregando células…" />
     </div>
     <div
       v-else-if="!participatingCells.length"

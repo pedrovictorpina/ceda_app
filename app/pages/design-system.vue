@@ -347,6 +347,10 @@ const selectItems = [
                   Estados de carregamento
                 </h2>
               </template>
+              <BrandLoader
+                class="mb-5"
+                label="Carregando conteúdo…"
+              />
               <USkeleton class="h-6 w-2/3" />
               <USkeleton class="mt-3 h-4 w-full" />
               <USkeleton class="mt-2 h-4 w-5/6" />

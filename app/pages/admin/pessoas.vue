@@ -197,10 +197,20 @@ onMounted(loadPeople)
 
 <template>
   <div>
+    <BrandLoadingStatus
+      v-if="savingRequest || savingRole"
+      label="Atualizando permissões…"
+    />
     <PageIntro
       title="Pessoas e permissões"
       description="Consulte os perfis cadastrados, os papéis atuais e analise solicitações de participação."
       icon="i-lucide-users-round"
+    />
+
+    <BrandLoader
+      v-if="loading"
+      class="my-5"
+      label="Carregando pessoas…"
     />
 
     <UAlert

@@ -256,10 +256,20 @@ onMounted(loadContent)
 
 <template>
   <div>
+    <BrandLoadingStatus
+      v-if="saving"
+      label="Salvando conteúdo…"
+    />
     <PageIntro
       title="Conteúdo e avisos"
       description="Planeje a Palavra do Dia, publique comunicados e envie avisos internos com respeito às preferências dos membros."
       icon="i-lucide-megaphone"
+    />
+
+    <BrandLoader
+      v-if="loading"
+      class="my-5"
+      label="Carregando conteúdo…"
     />
 
     <UAlert

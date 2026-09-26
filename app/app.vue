@@ -1,4 +1,6 @@
 <script setup lang="ts">
+const { isLoading } = useLoadingIndicator()
+
 useHead({
   htmlAttrs: { lang: 'pt-BR' },
   link: [
@@ -10,7 +12,12 @@ useHead({
 
 <template>
   <UApp>
-    <NuxtLoadingIndicator color="#f97316" />
+    <ClientOnly>
+      <BrandLoadingScreen
+        v-if="isLoading"
+        label="Abrindo página…"
+      />
+    </ClientOnly>
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>

@@ -1,5 +1,5 @@
 <template>
-  <NavigationAppShell section="Administração">
+  <NavigationAppShell>
     <slot />
   </NavigationAppShell>
 </template>

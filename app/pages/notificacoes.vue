@@ -70,7 +70,7 @@ async function markRead(notification: InternalNotification) {
       v-if="loading"
       class="py-10 text-center text-muted"
     >
-      Carregando notificações…
+      <BrandLoader label="Carregando notificações…" />
     </div>
     <UCard v-else-if="!notifications.length">
       <div class="py-10 text-center">

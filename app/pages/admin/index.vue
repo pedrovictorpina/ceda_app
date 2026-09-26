@@ -148,6 +148,12 @@ onMounted(loadDashboard)
       icon="i-lucide-shield-check"
     />
 
+    <BrandLoader
+      v-if="loading"
+      class="my-5"
+      label="Carregando painel…"
+    />
+
     <UAlert
       color="primary"
       variant="subtle"

@@ -89,6 +89,10 @@ onMounted(async () => {
 
 <template>
   <div>
+    <BrandLoadingStatus
+      v-if="saving"
+      label="Salvando oração…"
+    />
     <PageIntro
       title="Motivos de oração"
       description="Compartilhe um pedido com privacidade controlada e acompanhe sua jornada de oração."

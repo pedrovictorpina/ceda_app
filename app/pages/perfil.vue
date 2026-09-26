@@ -342,6 +342,10 @@ onMounted(async () => {
 
 <template>
   <div>
+    <BrandLoadingStatus
+      v-if="savePending || avatarPending || familySaving"
+      label="Salvando perfil…"
+    />
     <PageIntro
       title="Perfil"
       description="Seus dados pessoais. A idade é sempre derivada da data de nascimento."
@@ -539,7 +543,10 @@ onMounted(async () => {
             v-if="familyLoading"
             class="mt-3 text-sm text-muted"
           >
-            Carregando familiares…
+            <BrandLoader
+              size="sm"
+              label="Carregando familiares…"
+            />
           </div>
           <div
             v-else-if="familyMembers.length"

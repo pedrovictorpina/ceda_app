@@ -22,8 +22,8 @@ export interface NavigationItem {
   label: string
   icon: string
   to: string
-  group?: 'main' | 'community' | 'church' | 'more' | 'account' | 'administration'
-  requires?: SystemRole | 'guardian'
+  group?: 'main' | 'community' | 'church' | 'more' | 'account' | 'administration' | 'operations'
+  requires?: SystemRole | 'guardian' | 'store_operator'
   webOnly?: boolean
 }
 

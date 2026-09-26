@@ -6,6 +6,7 @@ interface Product {
   id: string
   name: string
   description: string | null
+  image_path?: string | null
   sale_price: number
   stock_available: number
 }
@@ -20,6 +21,8 @@ interface Order {
 
 const auth = useAuthStore()
 const products = ref<Product[]>([])
+const cashDayOpen = ref(false)
+const cashFlowAvailable = ref<boolean | null>(null)
 const orders = ref<Order[]>([])
 const quantities = reactive<Record<string, number>>({})
 const cart = ref<Array<Product & { quantity: number }>>([])
@@ -27,6 +30,7 @@ const note = ref('')
 const loading = ref(true)
 const placingOrder = ref(false)
 const feedback = ref('')
+let refreshTimer: ReturnType<typeof setInterval> | undefined
 
 const cartTotal = computed(() => cart.value.reduce((total, item) => total + item.sale_price * item.quantity, 0))
 const cartItemsCount = computed(() => cart.value.reduce((total, item) => total + item.quantity, 0))
@@ -41,17 +45,34 @@ function formatMoney(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
 }
 
-async function loadStore() {
+function productImageUrl(path?: string | null) {
+  const { $supabase } = useNuxtApp()
+  return path && $supabase ? $supabase.storage.from('store-product-images').getPublicUrl(path).data.publicUrl : ''
+}
+
+async function loadStore(silent = false) {
   const { $supabase } = useNuxtApp()
   if (!$supabase || !auth.profile) return
-  loading.value = true
-  const [productsResult, ordersResult] = await Promise.all([
-    $supabase.from('store_products').select('id, name, description, sale_price, stock_available').eq('active', true).gt('stock_available', 0).order('name'),
-    $supabase.from('store_orders').select('id, order_number, status, total_amount, created_at').eq('buyer_id', auth.profile.id).order('created_at', { ascending: false }).limit(20)
+  if (!silent) loading.value = true
+  if (cashFlowAvailable.value === null) {
+    const { error } = await $supabase.rpc('sync_store_cash_day')
+    cashFlowAvailable.value = !error
+  } else if (cashFlowAvailable.value) await $supabase.rpc('sync_store_cash_day')
+  const [productsResult, ordersResult, cashDayResult] = await Promise.all([
+    $supabase.from('store_products').select('*').eq('active', true).gt('stock_available', 0).order('name'),
+    $supabase.from('store_orders').select('id, order_number, status, total_amount, created_at').eq('buyer_id', auth.profile.id).order('created_at', { ascending: false }).limit(20),
+    cashFlowAvailable.value
+      ? $supabase.from('store_cash_days').select('id').eq('status', 'open').limit(1).maybeSingle()
+      : Promise.resolve({ data: null, error: null })
   ])
-  products.value = (productsResult.data || []) as Product[]
+  cashDayOpen.value = !cashFlowAvailable.value || Boolean(cashDayResult.data)
+  const selectionResult = cashDayResult.data
+    ? await $supabase.from('store_cash_day_products').select('product_id').eq('cash_day_id', cashDayResult.data.id)
+    : null
+  const selectedIds = new Set((selectionResult?.data || []).map(row => row.product_id))
+  products.value = ((productsResult.data || []) as Product[]).filter(product => !cashFlowAvailable.value || selectedIds.has(product.id))
   orders.value = (ordersResult.data || []) as Order[]
-  feedback.value = productsResult.error || ordersResult.error ? 'Não foi possível atualizar a loja. Tente novamente.' : ''
+  if (productsResult.error || ordersResult.error || cashDayResult.error || selectionResult?.error) feedback.value = 'Não foi possível atualizar a loja. Tente novamente.'
   loading.value = false
 }
 
@@ -124,15 +145,32 @@ async function placeOrder() {
   await loadStore()
 }
 
-onMounted(loadStore)
+onMounted(() => {
+  void loadStore()
+  refreshTimer = setInterval(() => {
+    if (document.visibilityState === 'visible' && !placingOrder.value && !loading.value) void loadStore(true)
+  }, 8000)
+})
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+})
 </script>
 
 <template>
   <div>
+    <BrandLoadingStatus
+      v-if="placingOrder"
+      label="Enviando pedido…"
+    />
     <PageIntro
       title="Loja"
-      description="Escolha itens disponíveis. Seu pedido é reservado em tempo real antes de seguir para o caixa."
+      description="Escolha os itens do caixa de hoje. Seu pedido é reservado antes de seguir para o pagamento e a retirada."
       icon="i-lucide-shopping-bag"
+    />
+    <BrandLoader
+      v-if="loading"
+      class="my-5"
+      label="Carregando loja…"
     />
     <UAlert
       v-if="feedback"
@@ -161,7 +199,7 @@ onMounted(loadStore)
             icon="i-lucide-refresh-cw"
             :loading="loading"
             label="Atualizar"
-            @click="loadStore"
+            @click="loadStore()"
           />
         </div>
         <div class="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
@@ -177,6 +215,13 @@ onMounted(loadStore)
             :key="product.id"
             class="group overflow-hidden transition duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/5"
           >
+            <img
+              v-if="product.image_path"
+              :src="productImageUrl(product.image_path)"
+              :alt="product.name"
+              class="mb-4 aspect-video w-full rounded-xl object-cover"
+              loading="lazy"
+            >
             <div class="flex items-start justify-between gap-3">
               <div class="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
                 <UIcon
@@ -241,10 +286,10 @@ onMounted(loadStore)
                 />
               </div>
               <p class="mt-4 font-semibold">
-                Nenhum item disponível agora
+                {{ cashDayOpen ? 'Nenhum item disponível agora' : 'Caixa fechado' }}
               </p>
               <p class="mt-1 max-w-sm text-sm text-muted">
-                Volte em alguns instantes: o catálogo aparece assim que o caixa registra uma entrada de estoque.
+                {{ cashDayOpen ? 'O caixa ainda não disponibilizou produtos com estoque.' : 'Os produtos aparecem aqui quando o responsável inicia as vendas do dia.' }}
               </p>
             </div>
           </UCard>
@@ -352,7 +397,7 @@ onMounted(loadStore)
               @click="placeOrder"
             />
             <p class="mt-3 text-center text-xs leading-4 text-muted">
-              O pedido reserva os itens. O pagamento e a retirada são confirmados pela equipe.
+              O pedido reserva os itens. Guarde o número do pedido para informar no caixa e na retirada.
             </p>
           </template>
         </UCard>

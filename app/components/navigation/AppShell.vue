@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { canManageChurch } from '~/utils/authorization'
+import { canManageChurch, hasRole } from '~/utils/authorization'
 import type { NavigationItem } from '~/types/domain'
 
-const props = withDefaults(defineProps<{ section?: string }>(), { section: 'Membros' })
 const route = useRoute()
 const auth = useAuthStore()
-const { visibleItems } = useAppNavigation()
+const { visibleMemberItems, visibleAdministratorItems } = useAppNavigation()
 const sidebarCollapsed = ref(false)
 const menuOpen = ref(false)
 const collapsedGroups = ref<Record<string, boolean>>({
@@ -15,24 +14,42 @@ const collapsedGroups = ref<Record<string, boolean>>({
   account: true
 })
 
-const mobilePrimary = computed(() => visibleItems.value.filter(item => ['/inicio', '/eventos', '/notificacoes'].includes(item.to)))
-const menuItems = computed(() => visibleItems.value.filter(item => !item.webOnly || !menuOpen.value))
+const canUseAdminView = computed(() => canManageChurch(auth.profile))
+const isAdminView = computed(() => canUseAdminView.value && (route.path.startsWith('/admin') || route.path.startsWith('/operacao')))
+const roleLabel = computed(() => {
+  if (hasRole(auth.profile, 'administrator')) return 'Administrador'
+  if (hasRole(auth.profile, 'pastor')) return 'Pastor'
+  if (hasRole(auth.profile, 'cashier')) return 'Caixa'
+  if (hasRole(auth.profile, 'counter')) return 'Balcão/Entrega'
+  return 'Membro'
+})
+const activeItems = computed(() => isAdminView.value ? visibleAdministratorItems.value : visibleMemberItems.value)
+const mobilePrimary = computed(() => activeItems.value.filter(item => (
+  isAdminView.value
+    ? ['/admin', '/admin/agenda', '/operacao'].includes(item.to)
+    : ['/inicio', '/eventos', canUseAdminView.value || hasRole(auth.profile, 'cashier') || hasRole(auth.profile, 'counter') ? '/operacao' : '/notificacoes'].includes(item.to)
+)))
+const menuItems = computed(() => activeItems.value.filter(item => !item.webOnly || !menuOpen.value))
 const menuGroups = computed(() => {
-  const definitions: Array<{ id: NonNullable<NavigationItem['group']>, label: string, icon: string, collapsible: boolean }> = [
-    { id: 'main', label: 'Principal', icon: 'i-lucide-house', collapsible: false },
-    { id: 'community', label: 'Comunidade', icon: 'i-lucide-users', collapsible: true },
-    { id: 'church', label: 'Igreja', icon: 'i-lucide-landmark', collapsible: true },
-    { id: 'more', label: 'Mais', icon: 'i-lucide-ellipsis', collapsible: true },
-    { id: 'account', label: 'Conta', icon: 'i-lucide-circle-user-round', collapsible: true },
-    { id: 'administration', label: 'Administração', icon: 'i-lucide-shield-check', collapsible: false }
-  ]
+  const definitions: Array<{ id: NonNullable<NavigationItem['group']>, label: string, icon: string, collapsible: boolean }> = isAdminView.value
+    ? [
+        { id: 'main', label: 'Painel', icon: 'i-lucide-layout-dashboard', collapsible: false },
+        { id: 'administration', label: 'Gestão da igreja', icon: 'i-lucide-shield-check', collapsible: false },
+        { id: 'operations', label: 'Operação da loja', icon: 'i-lucide-package-check', collapsible: false }
+      ]
+    : [
+        { id: 'main', label: 'Principal', icon: 'i-lucide-house', collapsible: false },
+        { id: 'community', label: 'Comunidade', icon: 'i-lucide-users', collapsible: true },
+        { id: 'church', label: 'Igreja', icon: 'i-lucide-landmark', collapsible: true },
+        { id: 'more', label: 'Mais', icon: 'i-lucide-ellipsis', collapsible: true },
+        { id: 'account', label: 'Conta', icon: 'i-lucide-circle-user-round', collapsible: true },
+        { id: 'operations', label: 'Operação da loja', icon: 'i-lucide-package-check', collapsible: false }
+      ]
   return definitions.map(group => ({
     ...group,
     items: menuItems.value.filter(item => item.group === group.id)
   })).filter(group => group.items.length)
 })
-const canUseAdminView = computed(() => canManageChurch(auth.profile))
-const isAdminView = computed(() => route.path.startsWith('/admin'))
 
 function isGroupOpen(id: string, collapsible: boolean, items: NavigationItem[]) {
   return !collapsible || !collapsedGroups.value[id] || items.some(item => route.path.startsWith(item.to))
@@ -40,6 +57,10 @@ function isGroupOpen(id: string, collapsible: boolean, items: NavigationItem[]) 
 
 function toggleGroup(id: string) {
   collapsedGroups.value[id] = !collapsedGroups.value[id]
+}
+
+function isCurrentRoute(item: NavigationItem) {
+  return route.path === item.to || (!['/admin', '/operacao'].includes(item.to) && route.path.startsWith(`${item.to}/`))
 }
 
 function closeOnEscape(event: KeyboardEvent) {
@@ -75,11 +96,11 @@ async function changeView(view: 'member' | 'administrator') {
         />
         <BrandLogo to="/inicio" />
         <UBadge
-          class="hidden sm:inline-flex"
+          class="inline-flex shrink-0"
           color="neutral"
           variant="subtle"
         >
-          {{ props.section }}
+          {{ roleLabel }}
         </UBadge>
       </div>
       <div class="flex items-center gap-2">
@@ -165,7 +186,7 @@ async function changeView(view: 'member' | 'administrator') {
               :key="item.to"
               :to="item.to"
               class="focus-ring flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition hover:bg-elevated"
-              :class="route.path.startsWith(item.to) ? 'bg-primary/10 text-primary' : 'text-muted'"
+              :class="isCurrentRoute(item) ? 'bg-primary/10 text-primary' : 'text-muted'"
               :title="sidebarCollapsed ? item.label : undefined"
             >
               <UIcon
@@ -213,7 +234,7 @@ async function changeView(view: 'member' | 'administrator') {
         :key="item.to"
         :to="item.to"
         class="focus-ring flex min-h-12 flex-col items-center justify-center rounded-lg text-xs"
-        :class="route.path.startsWith(item.to) ? 'text-primary' : 'text-muted'"
+        :class="isCurrentRoute(item) ? 'text-primary' : 'text-muted'"
       >
         <UIcon
           :name="item.icon"

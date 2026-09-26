@@ -26,6 +26,10 @@ async function submit() {
 
 <template>
   <section class="mx-auto flex min-h-[calc(100vh-4rem)] max-w-md items-center px-4 py-12">
+    <BrandLoadingScreen
+      v-if="pending"
+      label="Entrando…"
+    />
     <UCard class="w-full">
       <template #header>
         <BrandLogo

@@ -21,6 +21,10 @@ async function applyUpdate() {
     role="status"
     aria-live="polite"
   >
+    <BrandLoadingScreen
+      v-if="updating"
+      label="Atualizando aplicativo…"
+    />
     <UCard class="border-primary/40 shadow-xl">
       <div class="flex items-start gap-3">
         <UIcon

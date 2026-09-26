@@ -113,6 +113,12 @@ onMounted(loadAudit)
       icon="i-lucide-scroll-text"
     />
 
+    <BrandLoader
+      v-if="loading"
+      class="my-5"
+      label="Carregando auditoria…"
+    />
+
     <UAlert
       color="primary"
       variant="subtle"

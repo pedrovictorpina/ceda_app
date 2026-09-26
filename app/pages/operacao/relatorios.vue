@@ -9,7 +9,7 @@ interface OrderItem {
   product_id: string
   quantity: number
   unit_price: number
-  product: { name: string }[] | null
+  product: { name: string } | { name: string }[] | null
 }
 
 interface StoreOrder {
@@ -18,6 +18,7 @@ interface StoreOrder {
   status: OrderStatus
   total_amount: number
   created_at: string
+  payment_method: 'cash' | 'pix' | 'debit_card' | 'credit_card' | null
   store_order_items: OrderItem[]
 }
 
@@ -33,8 +34,23 @@ interface InventoryBatch {
   product_id: string
   quantity_on_hand: number
   expires_on: string | null
-  product: { name: string }[] | null
+  product: { name: string } | { name: string }[] | null
 }
+
+interface CashDay {
+  id: string
+  business_date: string
+  status: 'preparing' | 'open' | 'closed'
+  started_at: string | null
+  closed_at: string | null
+}
+
+const route = useRoute()
+const selectedCashDayId = computed(() => typeof route.query.dia === 'string' ? route.query.dia : '')
+const cashDay = ref<CashDay | null>(null)
+const cashFlowAvailable = ref<boolean | null>(null)
+const recentDays = ref<CashDay[]>([])
+const paymentLabels = { cash: 'Dinheiro', pix: 'Pix', debit_card: 'Débito', credit_card: 'Crédito' }
 
 const presets: Array<{ value: Preset, label: string }> = [
   { value: 'day', label: 'Hoje' },
@@ -108,6 +124,7 @@ const effectiveDates = computed(() => {
 })
 
 const rangeLabel = computed(() => {
+  if (cashDay.value) return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(`${cashDay.value.business_date}T12:00:00Z`))
   const { start, end } = effectiveDates.value
   if (!start || !end) return 'Defina o período para consultar os dados.'
   const format = (date: string) => new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium' }).format(new Date(`${date}T00:00:00`))
@@ -120,6 +137,10 @@ const statusCounts = computed(() => Object.fromEntries(
 
 const paidOrders = computed(() => orders.value.filter(order => ['ready_for_pickup', 'fulfilled'].includes(order.status)))
 const revenue = computed(() => paidOrders.value.reduce((total, order) => total + Number(order.total_amount), 0))
+const revenueByMethod = computed(() => Object.fromEntries(
+  Object.keys(paymentLabels).map(method => [method, paidOrders.value.filter(order => order.payment_method === method)
+    .reduce((total, order) => total + Number(order.total_amount), 0)])
+) as Record<keyof typeof paymentLabels, number>)
 const averageTicket = computed(() => paidOrders.value.length ? revenue.value / paidOrders.value.length : 0)
 const deliveredItems = computed(() => orders.value.filter(order => order.status === 'fulfilled').reduce((total, order) => total + order.store_order_items.reduce((sum, item) => sum + Number(item.quantity), 0), 0))
 const pendingItems = computed(() => orders.value.filter(order => ['awaiting_payment', 'ready_for_pickup'].includes(order.status)).reduce((total, order) => total + order.store_order_items.reduce((sum, item) => sum + Number(item.quantity), 0), 0))
@@ -129,7 +150,7 @@ const bestSellers = computed(() => {
   const rows = new Map<string, { name: string, quantity: number, revenue: number }>()
   for (const order of orders.value.filter(order => ['ready_for_pickup', 'fulfilled'].includes(order.status))) {
     for (const item of order.store_order_items) {
-      const name = item.product?.[0]?.name || 'Produto removido'
+      const name = relationName(item.product) || 'Produto removido'
       const row = rows.get(item.product_id) || { name, quantity: 0, revenue: 0 }
       row.quantity += Number(item.quantity)
       row.revenue += Number(item.quantity) * Number(item.unit_price)
@@ -150,6 +171,10 @@ const expiringBatches = computed(() => {
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
+}
+
+function relationName(value: { name: string } | { name: string }[] | null) {
+  return Array.isArray(value) ? value[0]?.name : value?.name
 }
 
 function formatQuantity(value: number) {
@@ -180,13 +205,38 @@ async function loadReport() {
 
   loading.value = true
   feedback.value = ''
+  if (cashFlowAvailable.value === null) {
+    const { error } = await $supabase.rpc('sync_store_cash_day')
+    cashFlowAvailable.value = !error
+  } else if (cashFlowAvailable.value) await $supabase.rpc('sync_store_cash_day')
+  if (selectedCashDayId.value && !cashFlowAvailable.value) {
+    feedback.value = 'O relatório por dia estará disponível após a atualização do banco.'
+    loading.value = false
+    return
+  }
+  if (selectedCashDayId.value) {
+    const dayResult = await $supabase.from('store_cash_days')
+      .select('id, business_date, status, started_at, closed_at').eq('id', selectedCashDayId.value).maybeSingle()
+    cashDay.value = dayResult.data as CashDay | null
+    if (dayResult.error || !cashDay.value) {
+      feedback.value = 'Não foi possível localizar este dia de caixa.'
+      loading.value = false
+      return
+    }
+  } else cashDay.value = null
   const endTimestamp = `${end}T23:59:59.999`
+  const ordersQuery = cashFlowAvailable.value
+    ? $supabase.from('store_orders').select('id, order_number, status, total_amount, created_at, payment_method, store_order_items(product_id, quantity, unit_price, product:store_products(name))')
+    : $supabase.from('store_orders').select('id, order_number, status, total_amount, created_at, store_order_items(product_id, quantity, unit_price, product:store_products(name))')
+  const filteredOrdersQuery = cashDay.value
+    ? ordersQuery.eq('cash_day_id', cashDay.value.id)
+    : ordersQuery.gte('created_at', `${start}T00:00:00`).lte('created_at', endTimestamp)
   const [ordersResult, productsResult, batchesResult] = await Promise.all([
-    $supabase.from('store_orders').select('id, order_number, status, total_amount, created_at, store_order_items(product_id, quantity, unit_price, product:store_products(name))').gte('created_at', `${start}T00:00:00`).lte('created_at', endTimestamp).order('created_at', { ascending: false }).limit(1000),
+    filteredOrdersQuery.order('created_at', { ascending: false }).limit(1000),
     $supabase.from('store_products').select('id, name, stock_available, active').order('name'),
     $supabase.from('inventory_batches').select('id, product_id, quantity_on_hand, expires_on, product:store_products(name)').gt('quantity_on_hand', 0).not('expires_on', 'is', null).order('expires_on')
   ])
-  orders.value = (ordersResult.data || []) as StoreOrder[]
+  orders.value = ((ordersResult.data || []) as unknown as StoreOrder[]).map(order => ({ ...order, payment_method: order.payment_method || null }))
   products.value = (productsResult.data || []) as StoreProduct[]
   batches.value = (batchesResult.data || []) as InventoryBatch[]
   feedback.value = ordersResult.error || productsResult.error || batchesResult.error
@@ -195,8 +245,19 @@ async function loadReport() {
   loading.value = false
 }
 
+async function loadRecentDays() {
+  const { $supabase } = useNuxtApp()
+  if (!$supabase || !cashFlowAvailable.value) return
+  const { data } = await $supabase.from('store_cash_days')
+    .select('id, business_date, status, started_at, closed_at')
+    .eq('status', 'closed').order('business_date', { ascending: false }).limit(8)
+  recentDays.value = (data || []) as CashDay[]
+}
+
 function csvCell(value: string | number) {
-  return `"${String(value).replaceAll('"', '""')}"`
+  const cell = String(value)
+  const safeCell = /^[=+\-@\t\r]/.test(cell) ? `'${cell}` : cell
+  return `"${safeCell.replaceAll('"', '""')}"`
 }
 
 function downloadFile(content: BlobPart, fileName: string, type: string) {
@@ -209,17 +270,18 @@ function downloadFile(content: BlobPart, fileName: string, type: string) {
 }
 
 function exportCsv() {
-  const header = ['Pedido', 'Data', 'Status', 'Produtos', 'Quantidade', 'Total']
+  const header = ['Pedido', 'Data', 'Status', 'Pagamento', 'Produtos', 'Quantidade', 'Total']
   const rows = orders.value.map(order => [
     order.order_number,
     formatDateTime(order.created_at),
     statusLabels[order.status],
-    order.store_order_items.map(item => item.product?.[0]?.name || 'Produto removido').join(' | '),
+    order.payment_method ? paymentLabels[order.payment_method] : '',
+    order.store_order_items.map(item => relationName(item.product) || 'Produto removido').join(' | '),
     order.store_order_items.reduce((total, item) => total + Number(item.quantity), 0),
     Number(order.total_amount).toFixed(2).replace('.', ',')
   ])
   const csv = `\uFEFF${[header, ...rows].map(row => row.map(csvCell).join(';')).join('\r\n')}`
-  downloadFile(csv, `relatorio-loja-${effectiveDates.value.start || 'periodo'}-${effectiveDates.value.end || 'periodo'}.csv`, 'text/csv;charset=utf-8')
+  downloadFile(csv, `relatorio-caixa-${cashDay.value?.business_date || effectiveDates.value.start || 'periodo'}.csv`, 'text/csv;charset=utf-8')
 }
 
 async function exportPng() {
@@ -227,7 +289,7 @@ async function exportPng() {
   try {
     const canvas = document.createElement('canvas')
     canvas.width = 1600
-    canvas.height = 980
+    canvas.height = 1140
     const context = canvas.getContext('2d')
     if (!context) throw new Error('Canvas indisponível')
     context.fillStyle = '#17171b'
@@ -280,11 +342,25 @@ async function exportPng() {
       context.fillStyle = '#ff9a2f'
       context.fillText(`${formatQuantity(item.quantity)} un. · ${formatMoney(item.revenue)}`, 1210, y)
     })
+    context.fillStyle = '#ffffff'
+    context.font = 'bold 30px sans-serif'
+    context.fillText('Faturamento por pagamento', 72, 825)
+    ;(Object.keys(paymentLabels) as Array<keyof typeof paymentLabels>).forEach((method, index) => {
+      const x = 72 + index * 380
+      context.fillStyle = '#24242a'
+      context.fillRect(x, 850, 330, 125)
+      context.fillStyle = '#b8bac3'
+      context.font = '22px sans-serif'
+      context.fillText(paymentLabels[method], x + 20, 895)
+      context.fillStyle = '#ffffff'
+      context.font = 'bold 29px sans-serif'
+      context.fillText(formatMoney(revenueByMethod.value[method]), x + 20, 943)
+    })
     context.fillStyle = '#b8bac3'
     context.font = '22px sans-serif'
-    context.fillText(`Estoque baixo: ${lowStock.value.length} · Validade em até 30 dias: ${expiringBatches.value.length}`, 72, 880)
-    context.fillText(`Gerado em ${formatDateTime(new Date().toISOString())}`, 72, 924)
-    await new Promise<void>((resolve, reject) => canvas.toBlob(blob => blob ? (downloadFile(blob, `relatorio-loja-${effectiveDates.value.start || 'periodo'}.png`, 'image/png'), resolve()) : reject(new Error('Não foi possível gerar a imagem')), 'image/png'))
+    context.fillText(`Estoque baixo: ${lowStock.value.length} · Validade em até 30 dias: ${expiringBatches.value.length}`, 72, 1030)
+    context.fillText(`Gerado em ${formatDateTime(new Date().toISOString())}`, 72, 1074)
+    await new Promise<void>((resolve, reject) => canvas.toBlob(blob => blob ? (downloadFile(blob, `relatorio-caixa-${cashDay.value?.business_date || effectiveDates.value.start || 'periodo'}.png`, 'image/png'), resolve()) : reject(new Error('Não foi possível gerar a imagem')), 'image/png'))
   } catch {
     feedback.value = 'Não foi possível gerar a imagem do relatório neste navegador.'
   } finally {
@@ -292,15 +368,55 @@ async function exportPng() {
   }
 }
 
-onMounted(loadReport)
+onMounted(async () => {
+  await loadReport()
+  await loadRecentDays()
+})
+watch(selectedCashDayId, () => {
+  void loadReport()
+})
 </script>
 
 <template>
   <div>
+    <BrandLoadingStatus
+      v-if="exporting"
+      label="Exportando relatório…"
+    />
     <PageIntro
-      title="Relatórios da Loja"
-      description="Acompanhe vendas, fila de pedidos e riscos de estoque. O faturamento considera pedidos confirmados no caixa ou já entregues."
+      :title="cashDay ? 'Fechamento do caixa' : 'Relatórios da Loja'"
+      description="Acompanhe vendas, formas de pagamento, fila de pedidos e riscos de estoque. O faturamento considera pedidos confirmados ou entregues."
       icon="i-lucide-chart-no-axes-combined"
+    />
+
+    <div
+      v-if="recentDays.length"
+      class="mb-5 flex flex-wrap items-center gap-2"
+    >
+      <span class="mr-1 text-sm font-medium text-muted">Dias de caixa:</span>
+      <UButton
+        v-for="day in recentDays"
+        :key="day.id"
+        :to="`/operacao/relatorios?dia=${day.id}`"
+        :label="new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }).format(new Date(`${day.business_date}T12:00:00Z`))"
+        :color="selectedCashDayId === day.id ? 'primary' : 'neutral'"
+        :variant="selectedCashDayId === day.id ? 'solid' : 'outline'"
+        size="sm"
+      />
+      <UButton
+        v-if="selectedCashDayId"
+        to="/operacao/relatorios"
+        label="Outros períodos"
+        color="neutral"
+        variant="ghost"
+        size="sm"
+      />
+    </div>
+
+    <BrandLoader
+      v-if="loading"
+      class="my-5"
+      label="Carregando relatórios…"
     />
 
     <section class="rounded-2xl border border-default bg-elevated/30 p-4 shadow-sm sm:p-5">
@@ -309,7 +425,10 @@ onMounted(loadReport)
           <p class="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
             Período de análise
           </p>
-          <div class="mt-3 flex flex-wrap gap-2">
+          <div
+            v-if="!cashDay"
+            class="mt-3 flex flex-wrap gap-2"
+          >
             <UButton
               v-for="preset in presets"
               :key="preset.value"
@@ -330,19 +449,19 @@ onMounted(loadReport)
         </div>
         <div class="flex flex-wrap items-end gap-3">
           <UFormField
-            v-if="selectedPreset === 'custom'"
+            v-if="!cashDay && selectedPreset === 'custom'"
             label="Data inicial"
           >
             <AppDatePicker v-model="startDate" />
           </UFormField>
           <UFormField
-            v-if="selectedPreset === 'custom'"
+            v-if="!cashDay && selectedPreset === 'custom'"
             label="Data final"
           >
             <AppDatePicker v-model="endDate" />
           </UFormField>
           <UButton
-            v-if="selectedPreset === 'custom'"
+            v-if="!cashDay && selectedPreset === 'custom'"
             label="Aplicar"
             icon="i-lucide-filter"
             :loading="loading"
@@ -385,7 +504,7 @@ onMounted(loadReport)
             id="store-report-title"
             class="mt-1 text-2xl font-bold"
           >
-            Indicadores do período
+            {{ cashDay ? 'Indicadores do caixa' : 'Indicadores do período' }}
           </h2>
         </div>
         <div class="flex flex-wrap gap-2">
@@ -487,6 +606,29 @@ onMounted(loadReport)
         </div>
 
         <div class="mt-6 grid gap-6 xl:grid-cols-2">
+          <UCard v-if="cashFlowAvailable">
+            <template #header>
+              <h3 class="font-semibold">
+                Faturamento por pagamento
+              </h3>
+            </template>
+            <div class="space-y-4">
+              <div
+                v-for="(label, method) in paymentLabels"
+                :key="method"
+              >
+                <div class="flex justify-between text-sm">
+                  <span>{{ label }}</span><strong>{{ formatMoney(revenueByMethod[method]) }}</strong>
+                </div>
+                <div class="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                  <div
+                    class="h-full rounded-full bg-primary"
+                    :style="{ width: `${revenue ? revenueByMethod[method] / revenue * 100 : 0}%` }"
+                  />
+                </div>
+              </div>
+            </div>
+          </UCard>
           <UCard>
             <template #header>
               <div>
@@ -620,7 +762,7 @@ onMounted(loadReport)
               >
                 <div>
                   <p class="font-medium">
-                    {{ batch.product?.[0]?.name || 'Produto' }}
+                    {{ relationName(batch.product) || 'Produto' }}
                   </p><p class="text-sm text-muted">
                     {{ formatQuantity(batch.quantity_on_hand) }} un. em saldo
                   </p>
@@ -680,7 +822,7 @@ onMounted(loadReport)
                   </td><td class="whitespace-nowrap px-2 py-3 text-muted">
                     {{ formatDateTime(order.created_at) }}
                   </td><td class="max-w-72 px-2 py-3 text-muted">
-                    {{ order.store_order_items.map(item => `${item.product?.[0]?.name || 'Produto'} × ${formatQuantity(item.quantity)}`).join(', ') }}
+                    {{ order.store_order_items.map(item => `${relationName(item.product) || 'Produto'} × ${formatQuantity(item.quantity)}`).join(', ') }}
                   </td><td class="px-2 py-3">
                     <UBadge
                       :color="statusColors[order.status]"

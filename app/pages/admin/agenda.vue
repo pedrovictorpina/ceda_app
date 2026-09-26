@@ -295,10 +295,20 @@ onMounted(loadAgenda)
 
 <template>
   <div>
+    <BrandLoadingStatus
+      v-if="saving"
+      label="Salvando agenda…"
+    />
     <PageIntro
       title="Agenda e eventos"
       description="Organize a programação da igreja, defina responsáveis e mantenha lembretes pessoais para os próximos compromissos."
       icon="i-lucide-calendar-cog"
+    />
+
+    <BrandLoader
+      v-if="loading"
+      class="my-5"
+      label="Carregando agenda…"
     />
 
     <UAlert

@@ -1,9 +1,9 @@
 import type { NavigationItem } from '~/types/domain'
-import { canAccessChildren, canManageChurch, hasRole } from '~/utils/authorization'
+import { canAccessChildren, canManageChurch, canOperateStore, hasRole } from '~/utils/authorization'
 
 export function useAppNavigation() {
   const auth = useAuthStore()
-  const items: NavigationItem[] = [
+  const memberItems: NavigationItem[] = [
     { label: 'Início', icon: 'i-lucide-house', to: '/inicio', group: 'main' },
     { label: 'Palavra do Dia', icon: 'i-lucide-book-open-text', to: '/palavra-do-dia', group: 'main' },
     { label: 'Notícias', icon: 'i-lucide-newspaper', to: '/noticias', group: 'main' },
@@ -24,16 +24,36 @@ export function useAppNavigation() {
     { label: 'Ovelhinhas', icon: 'i-lucide-heart-handshake', to: '/ovelhinhas', group: 'account', requires: 'guardian' },
     { label: 'Perfil', icon: 'i-lucide-user-round', to: '/perfil', group: 'account' },
     { label: 'Política de Privacidade', icon: 'i-lucide-file-lock-2', to: '/privacidade', group: 'account' },
-    { label: 'Caixa e estoque', icon: 'i-lucide-package-check', to: '/operacao', group: 'administration', requires: 'cashier' },
-    { label: 'Relatórios', icon: 'i-lucide-chart-no-axes-combined', to: '/operacao/relatorios', group: 'administration', requires: 'cashier' },
-    { label: 'Administração', icon: 'i-lucide-shield-check', to: '/admin', group: 'administration', requires: 'administrator' }
+    { label: 'Atendimento da loja', icon: 'i-lucide-package-check', to: '/operacao', group: 'operations', requires: 'store_operator' },
+    { label: 'Relatórios do caixa', icon: 'i-lucide-chart-no-axes-combined', to: '/operacao/relatorios', group: 'operations', requires: 'cashier' }
   ]
-  const visibleItems = computed(() => items.filter((item) => {
+
+  const administratorItems: NavigationItem[] = [
+    { label: 'Visão geral', icon: 'i-lucide-layout-dashboard', to: '/admin', group: 'main', requires: 'administrator' },
+    { label: 'Pessoas e permissões', icon: 'i-lucide-users-round', to: '/admin/pessoas', group: 'administration', requires: 'administrator' },
+    { label: 'Conteúdo e avisos', icon: 'i-lucide-newspaper', to: '/admin/conteudo', group: 'administration', requires: 'administrator' },
+    { label: 'Agenda e eventos', icon: 'i-lucide-calendar-days', to: '/admin/agenda', group: 'administration', requires: 'administrator' },
+    { label: 'Auditoria', icon: 'i-lucide-shield-check', to: '/admin/auditoria', group: 'administration', requires: 'administrator' },
+    { label: 'Caixa e estoque', icon: 'i-lucide-package-check', to: '/operacao', group: 'operations', requires: 'administrator' },
+    { label: 'Relatórios', icon: 'i-lucide-chart-no-axes-combined', to: '/operacao/relatorios', group: 'operations', requires: 'administrator' }
+  ]
+
+  function canSeeItem(item: NavigationItem) {
     if (item.requires === 'guardian') return canAccessChildren(auth.profile)
     if (item.requires === 'administrator') return canManageChurch(auth.profile)
-    if (item.requires === 'cashier') return canManageChurch(auth.profile) || hasRole(auth.profile, 'cashier') || hasRole(auth.profile, 'counter')
+    if (item.requires === 'store_operator') return canOperateStore(auth.profile)
+    if (item.requires === 'cashier') return canManageChurch(auth.profile) || hasRole(auth.profile, 'cashier')
     if (item.requires) return hasRole(auth.profile, item.requires)
     return true
-  }))
-  return { items, visibleItems }
+  }
+
+  const visibleMemberItems = computed(() => memberItems.filter(canSeeItem))
+  const visibleAdministratorItems = computed(() => administratorItems.filter(canSeeItem))
+
+  return {
+    items: memberItems,
+    visibleItems: visibleMemberItems,
+    visibleMemberItems,
+    visibleAdministratorItems
+  }
 }
