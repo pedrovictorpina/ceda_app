@@ -25,6 +25,7 @@ export function useAppNavigation() {
     { label: 'Perfil', icon: 'i-lucide-user-round', to: '/perfil', group: 'account' },
     { label: 'Política de Privacidade', icon: 'i-lucide-file-lock-2', to: '/privacidade', group: 'account' },
     { label: 'Atendimento da loja', icon: 'i-lucide-package-check', to: '/operacao', group: 'operations', requires: 'store_operator' },
+    { label: 'Controle de estoque', icon: 'i-lucide-boxes', to: '/operacao/estoque', group: 'operations', requires: 'cashier' },
     { label: 'Relatórios do caixa', icon: 'i-lucide-chart-no-axes-combined', to: '/operacao/relatorios', group: 'operations', requires: 'cashier' }
   ]
 
@@ -34,7 +35,8 @@ export function useAppNavigation() {
     { label: 'Conteúdo e avisos', icon: 'i-lucide-newspaper', to: '/admin/conteudo', group: 'administration', requires: 'administrator' },
     { label: 'Agenda e eventos', icon: 'i-lucide-calendar-days', to: '/admin/agenda', group: 'administration', requires: 'administrator' },
     { label: 'Auditoria', icon: 'i-lucide-shield-check', to: '/admin/auditoria', group: 'administration', requires: 'administrator' },
-    { label: 'Caixa e estoque', icon: 'i-lucide-package-check', to: '/operacao', group: 'operations', requires: 'administrator' },
+    { label: 'Caixa e pedidos', icon: 'i-lucide-package-check', to: '/operacao', group: 'operations', requires: 'administrator' },
+    { label: 'Controle de estoque', icon: 'i-lucide-boxes', to: '/operacao/estoque', group: 'operations', requires: 'administrator' },
     { label: 'Relatórios', icon: 'i-lucide-chart-no-axes-combined', to: '/operacao/relatorios', group: 'operations', requires: 'administrator' }
   ]
 
