@@ -7,6 +7,7 @@ useSeoMeta({ title: 'Controle de estoque' })
 interface Product {
   id: string
   name: string
+  description: string | null
   image_path: string | null
   sale_price: number
   stock_available: number
@@ -34,12 +35,24 @@ const productPhoto = ref<File | null>(null)
 const productPhotoPreview = ref('')
 const productPhotoInputKey = ref(0)
 const batchForm = reactive({ productId: '', quantity: 1, unitCost: null as number | null, expiresOn: '' })
+const editingProductId = ref<string | null>(null)
+const deletingProductId = ref<string | null>(null)
+const editForm = reactive({ name: '', description: '', salePrice: 0 })
+const editPhoto = ref<File | null>(null)
+const editPhotoPreview = ref('')
+const editPhotoInputKey = ref(0)
+const removeExistingPhoto = ref(false)
 
 const canManageInventory = computed(() => canManageChurch(auth.profile) || hasRole(auth.profile, 'cashier'))
 const productItems = computed(() => products.value.filter(product => product.active).map(product => ({ label: `${product.name} (${product.stock_available})`, value: product.id })))
 const activeProducts = computed(() => products.value.filter(product => product.active))
 const lowStockProducts = computed(() => activeProducts.value.filter(product => product.stock_available <= 5))
 const availableUnits = computed(() => activeProducts.value.reduce((total, product) => total + Number(product.stock_available), 0))
+const canSaveEdit = computed(() => editForm.name.trim().length >= 2
+  && editForm.name.trim().length <= 120
+  && typeof editForm.salePrice === 'number'
+  && Number.isFinite(editForm.salePrice)
+  && editForm.salePrice >= 0)
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
@@ -74,6 +87,42 @@ function selectProductPhoto(event: Event) {
   feedback.value = ''
 }
 
+function clearEditPhoto() {
+  if (editPhotoPreview.value) URL.revokeObjectURL(editPhotoPreview.value)
+  editPhoto.value = null
+  editPhotoPreview.value = ''
+  editPhotoInputKey.value++
+}
+
+function selectEditPhoto(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  clearEditPhoto()
+  if (!file) return
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+    feedback.value = 'Escolha uma foto JPG, PNG ou WebP de até 5 MB.'
+    return
+  }
+  editPhoto.value = file
+  editPhotoPreview.value = URL.createObjectURL(file)
+  removeExistingPhoto.value = false
+  feedback.value = ''
+}
+
+function cancelEdit() {
+  editingProductId.value = null
+  clearEditPhoto()
+  removeExistingPhoto.value = false
+}
+
+function startEdit(product: Product) {
+  cancelEdit()
+  deletingProductId.value = null
+  editingProductId.value = product.id
+  editForm.name = product.name
+  editForm.description = product.description || ''
+  editForm.salePrice = Number(product.sale_price)
+}
+
 async function loadInventory() {
   const { $supabase } = useNuxtApp()
   if (!$supabase || !canManageInventory.value) {
@@ -82,13 +131,75 @@ async function loadInventory() {
   }
   loading.value = true
   const [productsResult, batchesResult] = await Promise.all([
-    $supabase.from('store_products').select('id, name, image_path, sale_price, stock_available, active').order('name'),
+    $supabase.from('store_products').select('id, name, description, image_path, sale_price, stock_available, active').order('name'),
     $supabase.from('inventory_batches').select('id, product_id, quantity_received, quantity_on_hand, expires_on, created_at, product:store_products(name)').order('created_at', { ascending: false }).limit(20)
   ])
   products.value = (productsResult.data || []) as Product[]
   batches.value = (batchesResult.data || []) as unknown as InventoryBatch[]
   if (productsResult.error || batchesResult.error) feedback.value = 'Não foi possível carregar o estoque.'
   loading.value = false
+}
+
+async function saveProduct(product: Product) {
+  const { $supabase } = useNuxtApp()
+  const name = editForm.name.trim()
+  const salePrice = Number(editForm.salePrice)
+  if (!$supabase || !canManageInventory.value || editingProductId.value !== product.id || !canSaveEdit.value) return
+  saving.value = true
+  let newImagePath: string | null = null
+  if (editPhoto.value) {
+    const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[editPhoto.value.type]
+    if (!extension) {
+      feedback.value = 'Escolha uma foto JPG, PNG ou WebP.'
+      saving.value = false
+      return
+    }
+    newImagePath = `${product.id}/photo-${crypto.randomUUID()}.${extension}`
+    const { error } = await $supabase.storage.from('store-product-images').upload(newImagePath, editPhoto.value, {
+      contentType: editPhoto.value.type,
+      cacheControl: '3600',
+      upsert: false
+    })
+    if (error) {
+      feedback.value = 'Não foi possível enviar a nova foto. O produto não foi alterado.'
+      saving.value = false
+      return
+    }
+  }
+  const imagePath = newImagePath || (removeExistingPhoto.value ? null : product.image_path)
+  const { data, error } = await $supabase.from('store_products').update({
+    name,
+    description: editForm.description.trim() || null,
+    sale_price: salePrice,
+    ...(newImagePath || removeExistingPhoto.value ? { image_path: imagePath } : {})
+  }).eq('id', product.id).select('id').single()
+  if (error || !data) {
+    if (newImagePath) await $supabase.storage.from('store-product-images').remove([newImagePath])
+    feedback.value = 'Não foi possível salvar as alterações do produto.'
+  } else {
+    if (product.image_path && product.image_path !== imagePath) {
+      void $supabase.storage.from('store-product-images').remove([product.image_path])
+    }
+    cancelEdit()
+    feedback.value = 'Produto atualizado.'
+    await loadInventory()
+  }
+  saving.value = false
+}
+
+async function setProductActive(product: Product, active: boolean) {
+  const { $supabase } = useNuxtApp()
+  if (!$supabase || !canManageInventory.value) return
+  saving.value = true
+  const { data, error } = await $supabase.from('store_products').update({ active }).eq('id', product.id).select('id').single()
+  if (error || !data) feedback.value = active ? 'Não foi possível restaurar o produto.' : 'Não foi possível excluir o produto da loja.'
+  else {
+    deletingProductId.value = null
+    if (editingProductId.value === product.id) cancelEdit()
+    feedback.value = active ? 'Produto restaurado no catálogo.' : 'Produto excluído da loja. Pedidos e movimentações anteriores foram preservados.'
+    await loadInventory()
+  }
+  saving.value = false
 }
 
 async function createProduct() {
@@ -164,6 +275,7 @@ onMounted(() => {
 })
 onUnmounted(() => {
   if (productPhotoPreview.value) URL.revokeObjectURL(productPhotoPreview.value)
+  if (editPhotoPreview.value) URL.revokeObjectURL(editPhotoPreview.value)
 })
 </script>
 
@@ -451,7 +563,7 @@ onUnmounted(() => {
         class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
       >
         <UCard
-          v-for="product in activeProducts"
+          v-for="product in products"
           :key="product.id"
           class="overflow-hidden"
         >
@@ -470,9 +582,9 @@ onUnmounted(() => {
                 {{ formatMoney(product.sale_price) }} por unidade
               </p>
             </div><UBadge
-              :color="product.stock_available <= 5 ? 'warning' : 'success'"
+              :color="!product.active ? 'neutral' : product.stock_available <= 5 ? 'warning' : 'success'"
               variant="subtle"
-              :label="product.stock_available <= 5 ? 'Baixo' : 'Em dia'"
+              :label="!product.active ? 'Excluído da loja' : product.stock_available <= 5 ? 'Baixo' : 'Em dia'"
             />
           </div>
           <div class="mt-5 flex items-end justify-between">
@@ -490,9 +602,145 @@ onUnmounted(() => {
               class="size-8 text-muted/50"
             />
           </div>
+          <div class="mt-4 flex flex-wrap gap-2 border-t border-default pt-4">
+            <UButton
+              size="sm"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-pencil"
+              label="Editar"
+              :disabled="saving"
+              @click="startEdit(product)"
+            />
+            <UButton
+              v-if="product.active"
+              size="sm"
+              color="error"
+              variant="ghost"
+              icon="i-lucide-trash-2"
+              label="Excluir"
+              :disabled="saving"
+              @click="deletingProductId = product.id"
+            />
+            <UButton
+              v-else
+              size="sm"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-rotate-ccw"
+              label="Restaurar"
+              :loading="saving"
+              @click="setProductActive(product, true)"
+            />
+          </div>
+          <div
+            v-if="deletingProductId === product.id"
+            class="mt-4 rounded-xl border border-error/40 bg-error/5 p-3"
+          >
+            <p class="text-sm font-semibold">
+              Excluir {{ product.name }} da loja?
+            </p>
+            <p class="mt-1 text-sm text-muted">
+              O produto deixará de aparecer para venda e novas entradas. Pedidos e movimentações anteriores serão preservados.
+            </p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <UButton
+                size="sm"
+                color="error"
+                label="Confirmar exclusão"
+                :loading="saving"
+                @click="setProductActive(product, false)"
+              />
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                label="Cancelar"
+                @click="deletingProductId = null"
+              />
+            </div>
+          </div>
+          <div
+            v-if="editingProductId === product.id"
+            class="mt-4 space-y-3 border-t border-default pt-4"
+          >
+            <UFormField label="Nome">
+              <UInput
+                v-model="editForm.name"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Descrição">
+              <UTextarea
+                v-model="editForm.description"
+                :rows="2"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Preço de venda">
+              <UInput
+                v-model.number="editForm.salePrice"
+                type="number"
+                min="0"
+                step="0.01"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField
+              label="Trocar foto"
+              hint="JPG, PNG ou WebP de até 5 MB"
+            >
+              <UInput
+                :key="editPhotoInputKey"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                class="w-full"
+                @change="selectEditPhoto"
+              />
+            </UFormField>
+            <img
+              v-if="editPhotoPreview"
+              :src="editPhotoPreview"
+              alt="Prévia da nova foto"
+              class="size-20 rounded-xl object-cover"
+            >
+            <UButton
+              v-if="product.image_path && !removeExistingPhoto && !editPhoto"
+              size="sm"
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-image-off"
+              label="Remover foto atual"
+              @click="removeExistingPhoto = true"
+            />
+            <p
+              v-if="removeExistingPhoto"
+              class="text-sm text-muted"
+            >
+              A foto atual será removida ao salvar.
+            </p>
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                size="sm"
+                icon="i-lucide-save"
+                label="Salvar alterações"
+                :loading="saving"
+                :disabled="!canSaveEdit"
+                @click="saveProduct(product)"
+              />
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                label="Cancelar"
+                :disabled="saving"
+                @click="cancelEdit"
+              />
+            </div>
+          </div>
         </UCard>
         <UCard
-          v-if="!activeProducts.length"
+          v-if="!products.length"
           class="sm:col-span-2 xl:col-span-3"
         >
           <div class="flex flex-col items-center py-7 text-center">
