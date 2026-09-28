@@ -1,15 +1,9 @@
 <script setup lang="ts">
+import { Haptics, ImpactStyle } from '@capacitor/haptics'
+import { cartCount as countCart, cartQuantityOf, cartTotal as sumCart, formatBRL, reconcileCart, setCartQuantity, type CartItem, type StoreProduct } from '~/utils/storeCart'
+
 definePageMeta({ middleware: 'auth' })
 useSeoMeta({ title: 'Loja' })
-
-interface Product {
-  id: string
-  name: string
-  description: string | null
-  image_path?: string | null
-  sale_price: number
-  stock_available: number
-}
 
 interface Order {
   id: string
@@ -20,30 +14,40 @@ interface Order {
 }
 
 const auth = useAuthStore()
-const products = ref<Product[]>([])
+const toast = useToast()
+const products = ref<StoreProduct[]>([])
 const cashDayOpen = ref(false)
 const cashFlowAvailable = ref<boolean | null>(null)
 const orders = ref<Order[]>([])
-const quantities = reactive<Record<string, number>>({})
-const cart = ref<Array<Product & { quantity: number }>>([])
+const cart = ref<CartItem[]>([])
 const note = ref('')
+const search = ref('')
+const cartOpen = ref(false)
 const loading = ref(true)
 const placingOrder = ref(false)
 const feedback = ref('')
+const orderError = ref('')
 let refreshTimer: ReturnType<typeof setInterval> | undefined
 
-const cartTotal = computed(() => cart.value.reduce((total, item) => total + item.sale_price * item.quantity, 0))
-const cartItemsCount = computed(() => cart.value.reduce((total, item) => total + item.quantity, 0))
+const cartTotal = computed(() => sumCart(cart.value))
+const cartItemsCount = computed(() => countCart(cart.value))
+const activeOrders = computed(() => orders.value.filter(order => order.status === 'awaiting_payment' || order.status === 'ready_for_pickup'))
+const visibleProducts = computed(() => {
+  const term = search.value.trim().toLocaleLowerCase('pt-BR')
+  return term ? products.value.filter(product => product.name.toLocaleLowerCase('pt-BR').includes(term)) : products.value
+})
 const statusLabels: Record<Order['status'], string> = {
   awaiting_payment: 'Aguardando caixa',
   ready_for_pickup: 'Pronto para retirada',
   fulfilled: 'Entregue',
   cancelled: 'Cancelado'
 }
-
-function formatMoney(value: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
-}
+const statusColors = {
+  awaiting_payment: 'warning',
+  ready_for_pickup: 'success',
+  fulfilled: 'neutral',
+  cancelled: 'error'
+} as const satisfies Record<Order['status'], string>
 
 function productImageUrl(path?: string | null) {
   const { $supabase } = useNuxtApp()
@@ -70,52 +74,67 @@ async function loadStore(silent = false) {
     ? await $supabase.from('store_cash_day_products').select('product_id').eq('cash_day_id', cashDayResult.data.id)
     : null
   const selectedIds = new Set((selectionResult?.data || []).map(row => row.product_id))
-  products.value = ((productsResult.data || []) as Product[]).filter(product => !cashFlowAvailable.value || selectedIds.has(product.id))
+  products.value = ((productsResult.data || []) as StoreProduct[]).filter(product => !cashFlowAvailable.value || selectedIds.has(product.id))
   orders.value = (ordersResult.data || []) as Order[]
-  if (productsResult.error || ordersResult.error || cashDayResult.error || selectionResult?.error) feedback.value = 'Não foi possível atualizar a loja. Tente novamente.'
+  syncCartWithStock()
+  feedback.value = productsResult.error || ordersResult.error || cashDayResult.error || selectionResult?.error
+    ? 'Não foi possível atualizar a loja. Verifique sua conexão e toque em Atualizar.'
+    : ''
   loading.value = false
 }
 
-function addToCart(product: Product) {
-  const quantity = Math.max(1, Math.floor(quantities[product.id] || 1))
-  const existing = cart.value.find(item => item.id === product.id)
-  const nextQuantity = (existing?.quantity || 0) + quantity
-  if (nextQuantity > product.stock_available) {
-    feedback.value = `Há somente ${product.stock_available} unidade(s) disponível(is) de ${product.name}.`
-    return
+function syncCartWithStock() {
+  if (!cart.value.length) return
+  const previousCount = cartItemsCount.value
+  cart.value = reconcileCart(cart.value, products.value)
+  if (cartItemsCount.value < previousCount) {
+    toast.add({ title: 'Pedido ajustado', description: 'Alguns itens esgotaram e foram retirados ou reduzidos no seu pedido.', color: 'warning', icon: 'i-lucide-package-minus' })
   }
-  if (existing) existing.quantity = nextQuantity
-  else cart.value.push({ ...product, quantity })
-  quantities[product.id] = 1
-  feedback.value = ''
 }
 
-function removeFromCart(productId: string) {
-  cart.value = cart.value.filter(item => item.id !== productId)
+function tapFeedback() {
+  Haptics.impact({ style: ImpactStyle.Light }).catch(() => undefined)
 }
 
-function updateCartQuantity(productId: string, nextQuantity: number) {
-  const item = cart.value.find(entry => entry.id === productId)
-  if (!item) return
-  if (nextQuantity <= 0) {
-    removeFromCart(productId)
+function changeQuantity(product: StoreProduct, quantity: number) {
+  const result = setCartQuantity(cart.value, product, quantity)
+  if (!result.ok) {
+    toast.add({ title: 'Estoque no limite', description: `Há somente ${product.stock_available} unidade(s) de ${product.name}.`, color: 'warning', icon: 'i-lucide-package' })
     return
   }
-  item.quantity = Math.min(item.stock_available, Math.floor(nextQuantity))
+  cart.value = result.cart
+  orderError.value = ''
+  tapFeedback()
+}
+
+function clearCart() {
+  const previousCart = cart.value
+  const previousNote = note.value
+  cart.value = []
+  note.value = ''
+  toast.add({
+    title: 'Pedido limpo',
+    icon: 'i-lucide-trash-2',
+    color: 'neutral',
+    actions: [{ label: 'Desfazer', color: 'primary', variant: 'soft', onClick: () => {
+      cart.value = reconcileCart(previousCart, products.value)
+      note.value = previousNote
+    } }]
+  })
 }
 
 async function placeOrder() {
   const { $supabase } = useNuxtApp()
   if (!$supabase || !auth.profile || !cart.value.length) return
   placingOrder.value = true
-  feedback.value = ''
-  const { data: order, error: orderError } = await $supabase
+  orderError.value = ''
+  const { data: order, error: createError } = await $supabase
     .from('store_orders')
     .insert({ buyer_id: auth.profile.id, note: note.value.trim() || null })
     .select('id, order_number')
     .single()
-  if (orderError || !order) {
-    feedback.value = 'Não foi possível criar seu pedido.'
+  if (createError || !order) {
+    orderError.value = 'Não foi possível criar seu pedido. Tente enviar novamente.'
     placingOrder.value = false
     return
   }
@@ -129,9 +148,9 @@ async function placeOrder() {
     })
     if (error) {
       await $supabase.from('store_orders').update({ status: 'cancelled' }).eq('id', order.id)
-      feedback.value = error.message.includes('Estoque insuficiente')
-        ? 'Um item ficou sem estoque enquanto você finalizava. Atualizamos a loja para você ajustar o carrinho.'
-        : 'Não foi possível reservar todos os itens do pedido.'
+      orderError.value = error.message.includes('Estoque insuficiente')
+        ? 'Um item esgotou enquanto você finalizava. Atualizamos seu pedido; revise e envie de novo.'
+        : 'Não foi possível reservar todos os itens do pedido. Tente enviar novamente.'
       placingOrder.value = false
       await loadStore()
       return
@@ -140,10 +159,15 @@ async function placeOrder() {
 
   cart.value = []
   note.value = ''
-  feedback.value = `Pedido #${order.order_number} recebido. Aguarde a confirmação do caixa.`
+  cartOpen.value = false
   placingOrder.value = false
+  toast.add({ title: `Pedido #${order.order_number} enviado`, description: 'Informe esse número no caixa para pagar e retirar.', color: 'success', icon: 'i-lucide-circle-check', duration: 8000 })
   await loadStore()
 }
+
+watch(cartItemsCount, (count) => {
+  if (!count) cartOpen.value = false
+})
 
 onMounted(() => {
   void loadStore()
@@ -157,294 +181,277 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div>
+  <div :class="cartItemsCount ? 'pb-20 xl:pb-0' : ''">
     <BrandLoadingStatus
       v-if="placingOrder"
       label="Enviando pedido…"
     />
     <PageIntro
       title="Loja"
-      description="Escolha os itens do caixa de hoje. Seu pedido é reservado antes de seguir para o pagamento e a retirada."
+      description="Escolha os itens do caixa de hoje. Eles ficam reservados até o pagamento e a retirada."
       icon="i-lucide-shopping-bag"
     />
-    <BrandLoader
-      v-if="loading"
-      class="my-5"
-      label="Carregando loja…"
-    />
+
     <UAlert
       v-if="feedback"
-      class="mt-5"
-      color="neutral"
+      class="mb-5"
+      color="warning"
       variant="subtle"
+      icon="i-lucide-wifi-off"
       :description="feedback"
     />
-    <div class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_23rem]">
-      <section>
-        <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p class="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
-              Catálogo
-            </p>
-            <h2 class="mt-1 text-2xl font-bold tracking-tight">
-              Escolha o que precisa
-            </h2>
-            <p class="mt-1 text-sm text-muted">
-              A disponibilidade é atualizada quando o pedido é enviado.
-            </p>
-          </div>
+
+    <section
+      v-if="activeOrders.length"
+      class="mb-6 space-y-2"
+      aria-label="Pedidos em andamento"
+    >
+      <div
+        v-for="order in activeOrders"
+        :key="order.id"
+        class="flex items-center gap-3 rounded-2xl border p-3"
+        :class="order.status === 'ready_for_pickup' ? 'border-success/40 bg-success/10' : 'border-warning/40 bg-warning/10'"
+      >
+        <div
+          class="grid size-11 shrink-0 place-items-center rounded-full"
+          :class="order.status === 'ready_for_pickup' ? 'bg-success text-white' : 'bg-warning/20 text-warning'"
+        >
+          <UIcon
+            :name="order.status === 'ready_for_pickup' ? 'i-lucide-package-check' : 'i-lucide-hourglass'"
+            class="size-5"
+          />
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold text-highlighted">
+            Pedido #{{ order.order_number }}
+          </p>
+          <p class="text-sm text-muted">
+            {{ order.status === 'ready_for_pickup' ? 'Pronto. Retire no caixa.' : 'Pague no caixa informando o número.' }}
+          </p>
+        </div>
+        <span class="shrink-0 font-bold tabular-nums">{{ formatBRL(order.total_amount) }}</span>
+      </div>
+    </section>
+
+    <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_23rem]">
+      <section aria-labelledby="catalogo">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <h2
+            id="catalogo"
+            class="text-xl font-bold tracking-tight"
+          >
+            Produtos de hoje
+          </h2>
           <UButton
             color="neutral"
-            variant="outline"
+            variant="ghost"
             icon="i-lucide-refresh-cw"
             :loading="loading"
             label="Atualizar"
+            class="rounded-full"
             @click="loadStore()"
           />
         </div>
-        <div class="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-          <template v-if="loading">
+
+        <UInput
+          v-if="products.length > 6"
+          v-model="search"
+          class="mb-4 w-full"
+          size="lg"
+          icon="i-lucide-search"
+          placeholder="Buscar produto"
+          aria-label="Buscar produto"
+          :ui="{ base: 'rounded-full' }"
+        />
+
+        <div class="grid gap-3 sm:grid-cols-2 sm:gap-4 2xl:grid-cols-3">
+          <template v-if="loading && !products.length">
             <USkeleton
-              v-for="index in 6"
+              v-for="index in 4"
               :key="index"
-              class="h-56 rounded-xl"
+              class="h-28 rounded-2xl sm:h-72"
             />
           </template>
-          <UCard
-            v-for="product in products"
+          <StoreProductItem
+            v-for="product in visibleProducts"
             :key="product.id"
-            class="group overflow-hidden transition duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/5"
+            :product="product"
+            :quantity="cartQuantityOf(cart, product.id)"
+            :image-url="productImageUrl(product.image_path)"
+            @change="changeQuantity(product, $event)"
+          />
+          <p
+            v-if="!loading && products.length && !visibleProducts.length"
+            class="py-8 text-center text-sm text-muted sm:col-span-2 2xl:col-span-3"
           >
-            <img
-              v-if="product.image_path"
-              :src="productImageUrl(product.image_path)"
-              :alt="product.name"
-              class="mb-4 aspect-video w-full rounded-xl object-cover"
-              loading="lazy"
-            >
-            <div class="flex items-start justify-between gap-3">
-              <div class="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
-                <UIcon
-                  name="i-lucide-shopping-bag"
-                  class="size-5"
-                />
-              </div>
-              <UBadge
-                color="success"
-                variant="subtle"
-                :label="`${product.stock_available} em estoque`"
+            Nenhum produto com “{{ search }}”.
+          </p>
+          <div
+            v-if="!loading && !products.length"
+            class="flex flex-col items-center rounded-2xl border border-dashed border-default px-4 py-10 text-center sm:col-span-2 2xl:col-span-3"
+          >
+            <div class="grid size-12 place-items-center rounded-full bg-elevated">
+              <UIcon
+                :name="cashDayOpen ? 'i-lucide-package-x' : 'i-lucide-store'"
+                class="size-6 text-muted"
               />
             </div>
-            <p class="mt-5 text-lg font-semibold leading-tight">
-              {{ product.name }}
+            <p class="mt-4 font-semibold">
+              {{ cashDayOpen ? 'Nenhum item disponível agora' : 'Caixa fechado' }}
             </p>
-            <p class="mt-2 min-h-10 text-sm leading-5 text-muted">
-              {{ product.description || 'Item disponível para pedido.' }}
+            <p class="mt-1 max-w-sm text-sm text-muted">
+              {{ cashDayOpen ? 'O caixa ainda não liberou produtos com estoque.' : 'Os produtos aparecem aqui quando o responsável inicia as vendas do dia.' }}
             </p>
-            <div class="mt-5 flex items-end justify-between gap-3">
-              <div>
-                <p class="text-xs font-medium uppercase tracking-wide text-muted">
-                  Preço
-                </p>
-                <p class="mt-1 text-xl font-bold text-primary">
-                  {{ formatMoney(product.sale_price) }}
-                </p>
-              </div>
-              <p class="text-right text-xs text-muted">
-                Reserva<br>em tempo real
-              </p>
-            </div>
-            <template #footer>
-              <div class="flex items-center gap-2">
-                <UInput
-                  v-model.number="quantities[product.id]"
-                  class="w-20"
-                  type="number"
-                  min="1"
-                  :max="product.stock_available"
-                  placeholder="1"
-                  aria-label="Quantidade"
-                />
-                <UButton
-                  class="flex-1"
-                  label="Adicionar"
-                  icon="i-lucide-plus"
-                  @click="addToCart(product)"
-                />
-              </div>
-            </template>
-          </UCard>
-          <UCard
-            v-if="!loading && !products.length"
-            class="sm:col-span-2 2xl:col-span-3"
-          >
-            <div class="flex flex-col items-center py-8 text-center">
-              <div class="grid size-12 place-items-center rounded-full bg-muted">
-                <UIcon
-                  name="i-lucide-package-x"
-                  class="size-6 text-muted"
-                />
-              </div>
-              <p class="mt-4 font-semibold">
-                {{ cashDayOpen ? 'Nenhum item disponível agora' : 'Caixa fechado' }}
-              </p>
-              <p class="mt-1 max-w-sm text-sm text-muted">
-                {{ cashDayOpen ? 'O caixa ainda não disponibilizou produtos com estoque.' : 'Os produtos aparecem aqui quando o responsável inicia as vendas do dia.' }}
-              </p>
-            </div>
-          </UCard>
+          </div>
         </div>
       </section>
-      <aside class="space-y-5 xl:sticky xl:top-5 xl:self-start">
-        <UCard class="overflow-hidden">
+
+      <aside class="space-y-5 xl:sticky xl:top-20 xl:self-start">
+        <UCard class="hidden xl:block">
           <template #header>
             <div class="flex items-center justify-between gap-3">
-              <div>
-                <h2 class="font-semibold">
-                  Carrinho
-                </h2><p class="mt-0.5 text-sm text-muted">
-                  Revise antes de enviar
-                </p>
-              </div>
-              <UBadge
-                v-if="cartItemsCount"
-                color="primary"
-                :label="`${cartItemsCount} ${cartItemsCount === 1 ? 'item' : 'itens'}`"
+              <h2 class="font-semibold">
+                Seu pedido
+              </h2>
+              <UButton
+                v-if="cart.length"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                icon="i-lucide-trash-2"
+                label="Limpar"
+                @click="clearCart"
               />
             </div>
           </template>
-          <div
-            v-if="cart.length"
-            class="space-y-3"
-          >
-            <div
-              v-for="item in cart"
-              :key="item.id"
-              class="rounded-xl border border-default bg-elevated/40 p-3"
-            >
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <p class="truncate font-medium">
-                    {{ item.name }}
-                  </p><p class="mt-1 text-sm text-muted">
-                    {{ formatMoney(item.sale_price) }} cada
-                  </p>
-                </div>
-                <p class="shrink-0 font-semibold">
-                  {{ formatMoney(item.sale_price * item.quantity) }}
-                </p>
-              </div>
-              <div class="mt-3 flex items-center justify-between">
-                <div class="flex items-center rounded-lg border border-default">
-                  <UButton
-                    color="neutral"
-                    variant="ghost"
-                    size="xs"
-                    icon="i-lucide-minus"
-                    :aria-label="`Diminuir ${item.name}`"
-                    @click="updateCartQuantity(item.id, item.quantity - 1)"
-                  />
-                  <span class="w-8 text-center text-sm font-semibold">{{ item.quantity }}</span>
-                  <UButton
-                    color="neutral"
-                    variant="ghost"
-                    size="xs"
-                    icon="i-lucide-plus"
-                    :disabled="item.quantity >= item.stock_available"
-                    :aria-label="`Aumentar ${item.name}`"
-                    @click="updateCartQuantity(item.id, item.quantity + 1)"
-                  />
-                </div>
-                <UButton
-                  color="error"
-                  variant="ghost"
-                  size="xs"
-                  icon="i-lucide-trash-2"
-                  label="Remover"
-                  @click="removeFromCart(item.id)"
-                />
-              </div>
-            </div>
-          </div>
-          <p
-            v-else
-            class="rounded-xl border border-dashed border-default bg-elevated/40 p-4 text-sm leading-5 text-muted"
-          >
-            Adicione itens para criar um pedido.
-          </p>
+          <StoreCartItems
+            :cart="cart"
+            :image-url="productImageUrl"
+            @change="(item, quantity) => changeQuantity(item, quantity)"
+          />
           <UFormField
+            v-if="cart.length"
             class="mt-4"
-            label="Observação opcional"
+            label="Observação (opcional)"
           >
             <UTextarea
               v-model="note"
+              class="w-full"
               :rows="2"
               placeholder="Ex.: retirar após o culto"
             />
           </UFormField>
           <template #footer>
-            <div class="mb-4 flex items-end justify-between">
-              <span class="text-sm text-muted">Total do pedido</span><p class="text-xl font-bold text-primary">
-                {{ formatMoney(cartTotal) }}
-              </p>
-            </div>
-            <UButton
-              block
-              :disabled="!cart.length"
-              :loading="placingOrder"
-              label="Enviar pedido"
-              icon="i-lucide-shopping-cart"
-              @click="placeOrder"
+            <StoreCartSummary
+              :total="cartTotal"
+              :count="cartItemsCount"
+              :placing="placingOrder"
+              :error="orderError"
+              @submit="placeOrder"
             />
-            <p class="mt-3 text-center text-xs leading-4 text-muted">
-              O pedido reserva os itens. Guarde o número do pedido para informar no caixa e na retirada.
-            </p>
           </template>
         </UCard>
-        <UCard>
-          <template #header>
-            <div class="flex items-center gap-2">
-              <UIcon
-                name="i-lucide-receipt-text"
-                class="size-4 text-primary"
-              /><h2 class="font-semibold">
-                Meus pedidos
-              </h2>
-            </div>
-          </template>
-          <div
-            v-if="orders.length"
-            class="space-y-3"
+
+        <section aria-labelledby="meus-pedidos">
+          <h2
+            id="meus-pedidos"
+            class="mb-3 flex items-center gap-2 text-xl font-bold tracking-tight xl:text-base"
           >
-            <div
+            Meus pedidos
+          </h2>
+          <ul
+            v-if="orders.length"
+            class="divide-y divide-default rounded-2xl border border-default bg-default"
+          >
+            <li
               v-for="order in orders"
               :key="order.id"
-              class="rounded-xl border border-default p-3"
+              class="flex items-center justify-between gap-3 px-4 py-3"
             >
-              <div class="flex justify-between gap-2">
-                <p class="font-medium">
+              <div class="min-w-0">
+                <p class="font-medium text-highlighted">
                   Pedido #{{ order.order_number }}
-                </p><UBadge
-                  variant="subtle"
-                  :label="statusLabels[order.status]"
-                />
-              </div><div class="mt-2 flex items-center justify-between text-sm">
-                <p class="text-muted">
-                  {{ new Date(order.created_at).toLocaleDateString('pt-BR') }}
-                </p><p class="font-semibold">
-                  {{ formatMoney(order.total_amount) }}
+                </p>
+                <p class="text-sm text-muted">
+                  {{ new Date(order.created_at).toLocaleDateString('pt-BR') }}, {{ formatBRL(order.total_amount) }}
                 </p>
               </div>
-            </div>
-          </div>
+              <UBadge
+                class="shrink-0 rounded-full"
+                variant="subtle"
+                :color="statusColors[order.status]"
+                :label="statusLabels[order.status]"
+              />
+            </li>
+          </ul>
           <p
             v-else
-            class="text-sm text-muted"
+            class="rounded-2xl border border-dashed border-default p-4 text-sm text-muted"
           >
-            Você ainda não fez pedidos.
+            Seus pedidos aparecem aqui depois do primeiro envio.
           </p>
-        </UCard>
+        </section>
       </aside>
     </div>
+
+    <StoreCartFab
+      :count="cartItemsCount"
+      :total="cartTotal"
+      :open="cartOpen"
+      @open="cartOpen = true"
+    />
+
+    <UDrawer
+      v-model:open="cartOpen"
+      title="Seu pedido"
+      description="Confira as quantidades antes de enviar."
+      :ui="{ content: 'max-h-[88dvh]', body: 'overflow-y-auto', footer: 'safe-bottom border-t border-default' }"
+    >
+      <template #body>
+        <StoreCartItems
+          :cart="cart"
+          :image-url="productImageUrl"
+          @change="(item, quantity) => changeQuantity(item, quantity)"
+        />
+        <UFormField
+          class="mt-5"
+          label="Observação (opcional)"
+        >
+          <UTextarea
+            v-model="note"
+            class="w-full"
+            :rows="2"
+            placeholder="Ex.: retirar após o culto"
+          />
+        </UFormField>
+        <div class="mt-4 flex justify-between gap-2">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-plus"
+            label="Adicionar mais"
+            class="rounded-full"
+            @click="cartOpen = false"
+          />
+          <UButton
+            color="error"
+            variant="ghost"
+            icon="i-lucide-trash-2"
+            label="Limpar pedido"
+            class="rounded-full"
+            @click="clearCart"
+          />
+        </div>
+      </template>
+      <template #footer>
+        <StoreCartSummary
+          :total="cartTotal"
+          :count="cartItemsCount"
+          :placing="placingOrder"
+          :error="orderError"
+          @submit="placeOrder"
+        />
+      </template>
+    </UDrawer>
   </div>
 </template>
