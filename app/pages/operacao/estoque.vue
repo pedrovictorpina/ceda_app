@@ -42,10 +42,13 @@ const editPhoto = ref<File | null>(null)
 const editPhotoPreview = ref('')
 const editPhotoInputKey = ref(0)
 const removeExistingPhoto = ref(false)
+const showExcludedProducts = ref(false)
+const cameraCapture = ref<string | undefined>()
 
 const canManageInventory = computed(() => canManageChurch(auth.profile) || hasRole(auth.profile, 'cashier'))
 const productItems = computed(() => products.value.filter(product => product.active).map(product => ({ label: `${product.name} (${product.stock_available})`, value: product.id })))
 const activeProducts = computed(() => products.value.filter(product => product.active))
+const excludedProducts = computed(() => products.value.filter(product => !product.active))
 const lowStockProducts = computed(() => activeProducts.value.filter(product => product.stock_available <= 5))
 const availableUnits = computed(() => activeProducts.value.reduce((total, product) => total + Number(product.stock_available), 0))
 const canSaveEdit = computed(() => editForm.name.trim().length >= 2
@@ -267,6 +270,7 @@ async function addBatch() {
 }
 
 onMounted(() => {
+  if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) cameraCapture.value = 'environment'
   if (!canManageInventory.value) {
     void navigateTo('/operacao')
     return
@@ -405,6 +409,7 @@ onUnmounted(() => {
                 :key="productPhotoInputKey"
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
+                :capture="cameraCapture"
                 class="w-full"
                 @change="selectProductPhoto"
               />
@@ -532,6 +537,14 @@ onUnmounted(() => {
         </div>
         <div class="flex flex-wrap justify-end gap-2">
           <UButton
+            v-if="excludedProducts.length"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-archive"
+            :label="showExcludedProducts ? 'Ocultar excluídos' : `Excluídos (${excludedProducts.length})`"
+            @click="showExcludedProducts = !showExcludedProducts"
+          />
+          <UButton
             color="neutral"
             variant="outline"
             icon="i-lucide-chart-no-axes-combined"
@@ -563,7 +576,7 @@ onUnmounted(() => {
         class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
       >
         <UCard
-          v-for="product in products"
+          v-for="product in activeProducts"
           :key="product.id"
           class="overflow-hidden"
         >
@@ -582,9 +595,9 @@ onUnmounted(() => {
                 {{ formatMoney(product.sale_price) }} por unidade
               </p>
             </div><UBadge
-              :color="!product.active ? 'neutral' : product.stock_available <= 5 ? 'warning' : 'success'"
+              :color="product.stock_available <= 5 ? 'warning' : 'success'"
               variant="subtle"
-              :label="!product.active ? 'Excluído da loja' : product.stock_available <= 5 ? 'Baixo' : 'Em dia'"
+              :label="product.stock_available <= 5 ? 'Baixo' : 'Em dia'"
             />
           </div>
           <div class="mt-5 flex items-end justify-between">
@@ -613,7 +626,6 @@ onUnmounted(() => {
               @click="startEdit(product)"
             />
             <UButton
-              v-if="product.active"
               size="sm"
               color="error"
               variant="ghost"
@@ -621,16 +633,6 @@ onUnmounted(() => {
               label="Excluir"
               :disabled="saving"
               @click="deletingProductId = product.id"
-            />
-            <UButton
-              v-else
-              size="sm"
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-rotate-ccw"
-              label="Restaurar"
-              :loading="saving"
-              @click="setProductActive(product, true)"
             />
           </div>
           <div
@@ -694,6 +696,7 @@ onUnmounted(() => {
                 :key="editPhotoInputKey"
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
+                :capture="cameraCapture"
                 class="w-full"
                 @change="selectEditPhoto"
               />
@@ -740,7 +743,7 @@ onUnmounted(() => {
           </div>
         </UCard>
         <UCard
-          v-if="!products.length"
+          v-if="!activeProducts.length"
           class="sm:col-span-2 xl:col-span-3"
         >
           <div class="flex flex-col items-center py-7 text-center">
@@ -750,9 +753,9 @@ onUnmounted(() => {
                 class="size-6 text-muted"
               />
             </div><p class="mt-4 font-semibold">
-              Nenhum produto cadastrado
+              Nenhum produto ativo
             </p><p class="mt-1 text-sm text-muted">
-              Cadastre o primeiro item e registre uma entrada para disponibilizá-lo na loja.
+              {{ excludedProducts.length ? 'Cadastre um produto ou restaure um item excluído para disponibilizá-lo na loja.' : 'Cadastre o primeiro item e registre uma entrada para disponibilizá-lo na loja.' }}
             </p>
           </div>
         </UCard>
@@ -766,6 +769,36 @@ onUnmounted(() => {
         :title="`${lowStockProducts.length} ${lowStockProducts.length === 1 ? 'item precisa' : 'itens precisam'} de reposição`"
         :description="`${lowStockProducts.map(product => product.name).join(', ')} ${lowStockProducts.length === 1 ? 'está' : 'estão'} com até 5 unidades disponíveis.`"
       />
+      <div
+        v-if="showExcludedProducts && excludedProducts.length"
+        class="mt-6"
+      >
+        <h3 class="text-lg font-semibold">
+          Produtos excluídos
+        </h3>
+        <p class="mt-1 text-sm text-muted">
+          Estes itens estão fora da loja e da visão do estoque. Restaure um produto para voltar a exibi-lo.
+        </p>
+        <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <UCard
+            v-for="product in excludedProducts"
+            :key="product.id"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <span class="min-w-0 truncate font-medium">{{ product.name }}</span>
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-rotate-ccw"
+                label="Restaurar"
+                :loading="saving"
+                @click="setProductActive(product, true)"
+              />
+            </div>
+          </UCard>
+        </div>
+      </div>
     </section>
 
     <section
