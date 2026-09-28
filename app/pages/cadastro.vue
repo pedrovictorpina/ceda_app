@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { validateRegistration, type RegistrationErrors, type RegistrationInput } from '~/utils/registration'
+import { MIN_BIRTH_DATE, todayInTimeZone } from '~/utils/birthdays'
 
 definePageMeta({ layout: 'public' })
 useSeoMeta({ title: 'Criar cadastro' })
@@ -11,8 +12,11 @@ const form = reactive<RegistrationInput>({
   phone: '',
   password: '',
   passwordConfirmation: '',
-  acceptedPrivacy: false
+  acceptedPrivacy: false,
+  birthDate: '',
+  birthdayGreetingsOptIn: false
 })
+const today = todayInTimeZone()
 const errors = ref<RegistrationErrors>({})
 const pending = ref(false)
 const feedback = ref<{ color: 'success' | 'error' | 'warning', title: string, description: string } | null>(null)
@@ -120,6 +124,27 @@ async function submit() {
               class="w-full"
             />
           </UFormField>
+        </div>
+        <div class="space-y-3 rounded-2xl border border-default bg-elevated/40 p-4">
+          <UFormField
+            label="Data de nascimento (opcional)"
+            hint="Mostramos só o dia e o mês"
+            :error="errors.birthDate"
+          >
+            <UInput
+              v-model="form.birthDate"
+              type="date"
+              :min="MIN_BIRTH_DATE"
+              :max="today"
+              autocomplete="bday"
+              class="w-full"
+            />
+          </UFormField>
+          <UCheckbox
+            v-model="form.birthdayGreetingsOptIn"
+            label="Quero receber felicitações"
+            description="Seu nome, sua foto e o dia do aniversário (sem o ano) aparecem para os membros em Aniversariantes. Você pode mudar isso no perfil."
+          />
         </div>
         <UFormField
           label="Senha"

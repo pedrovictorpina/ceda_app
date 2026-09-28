@@ -3,6 +3,8 @@
 
 @theme static {
   --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
+  /* Títulos comemorativos (Aniversariantes e artes exportadas). */
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
   --color-brand-50: #fff7ed;
   --color-brand-500: #f97316;
   --color-brand-600: #ea580c;

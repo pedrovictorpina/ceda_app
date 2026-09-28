@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import { validateBirthDate } from '~/utils/birthdays'
+
 definePageMeta({ middleware: 'auth' })
 useSeoMeta({ title: 'Perfil' })
 const auth = useAuthStore()
-const form = reactive({ name: auth.profile?.name || '', email: auth.profile?.email || '', phone: '', sex: '', birthDate: '', notificationsEnabled: true })
+const form = reactive({ name: auth.profile?.name || '', email: auth.profile?.email || '', phone: '', sex: '', birthDate: '', notificationsEnabled: true, birthdayGreetingsOptIn: false })
+const birthdayOptInAvailable = ref(true)
 const confirmDeletion = ref(false)
 const requestStatus = ref('')
 const saveStatus = ref('')
@@ -289,6 +292,11 @@ async function removeAvatar() {
 
 async function saveProfile() {
   if (!auth.profile || !form.name.trim()) return
+  const birthDateError = validateBirthDate(form.birthDate)
+  if (birthDateError || (form.birthdayGreetingsOptIn && !form.birthDate)) {
+    saveStatus.value = birthDateError || 'Informe sua data de nascimento para receber felicitações.'
+    return
+  }
   const { $supabase } = useNuxtApp()
   if (!$supabase) {
     saveStatus.value = 'Não foi possível salvar porque o serviço de dados está indisponível.'
@@ -301,7 +309,8 @@ async function saveProfile() {
     phone: form.phone.trim() || null,
     sex: form.sex || null,
     birth_date: form.birthDate || null,
-    notifications_enabled: form.notificationsEnabled
+    notifications_enabled: form.notificationsEnabled,
+    ...(birthdayOptInAvailable.value ? { birthday_greetings_opt_in: form.birthdayGreetingsOptIn } : {})
   }).eq('id', auth.profile.id)
   if (error) saveStatus.value = 'Não foi possível salvar as alterações.'
   else {
@@ -325,7 +334,13 @@ async function requestDeletion() {
 onMounted(async () => {
   const { $supabase } = useNuxtApp()
   if (!$supabase || !auth.profile) return
-  const { data } = await $supabase.from('profiles').select('full_name, email, phone, sex, birth_date, avatar_path, notifications_enabled').eq('id', auth.profile.id).maybeSingle()
+  const columns = 'full_name, email, phone, sex, birth_date, avatar_path, notifications_enabled'
+  const withBirthday = await $supabase.from('profiles').select(`${columns}, birthday_greetings_opt_in`).eq('id', auth.profile.id).maybeSingle()
+  // Sem a migração de aniversariantes aplicada, carrega o perfil sem a nova preferência.
+  birthdayOptInAvailable.value = !withBirthday.error
+  const { data } = withBirthday.error
+    ? await $supabase.from('profiles').select(columns).eq('id', auth.profile.id).maybeSingle()
+    : withBirthday
   if (data) {
     form.name = data.full_name || ''
     form.email = data.email || ''
@@ -333,6 +348,7 @@ onMounted(async () => {
     form.sex = data.sex || ''
     form.birthDate = data.birth_date || ''
     form.notificationsEnabled = data.notifications_enabled
+    form.birthdayGreetingsOptIn = 'birthday_greetings_opt_in' in data && data.birthday_greetings_opt_in === true
     avatarPath.value = data.avatar_path || null
     if (avatarPath.value) await loadAvatar(avatarPath.value)
   }
@@ -453,7 +469,12 @@ onMounted(async () => {
           <p class="mt-3 text-xs leading-5 text-muted">
             Esta preferência vale para novos avisos internos. Notificações já recebidas continuam disponíveis na sua caixa de entrada.
           </p>
-        </div><template #footer>
+        </div>
+        <BirthdayGreetingsToggle
+          v-model="form.birthdayGreetingsOptIn"
+          :has-birth-date="Boolean(form.birthDate)"
+          :available="birthdayOptInAvailable"
+        /><template #footer>
           <UButton
             :loading="savePending"
             label="Salvar alterações"

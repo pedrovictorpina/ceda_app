@@ -1,3 +1,5 @@
+import { validateBirthDate } from './birthdays'
+
 export interface RegistrationInput {
   fullName: string
   email: string
@@ -5,6 +7,10 @@ export interface RegistrationInput {
   password: string
   passwordConfirmation: string
   acceptedPrivacy: boolean
+  /** Opcional (AAAA-MM-DD). */
+  birthDate: string
+  /** Consentimento para aparecer nos aniversariantes; desmarcado por padrão. */
+  birthdayGreetingsOptIn: boolean
 }
 
 export type RegistrationErrors = Partial<Record<keyof RegistrationInput, string>>
@@ -19,6 +25,9 @@ export function validateRegistration(input: RegistrationInput): RegistrationErro
   }
   if (!input.passwordConfirmation) errors.passwordConfirmation = 'Confirme sua senha.'
   else if (input.passwordConfirmation !== input.password) errors.passwordConfirmation = 'As senhas não coincidem.'
+  const birthDateError = validateBirthDate(input.birthDate)
+  if (birthDateError) errors.birthDate = birthDateError
+  else if (input.birthdayGreetingsOptIn && !input.birthDate) errors.birthDate = 'Informe sua data de nascimento para receber felicitações.'
   if (!input.acceptedPrivacy) errors.acceptedPrivacy = 'Você precisa aceitar a Política de Privacidade.'
   return errors
 }

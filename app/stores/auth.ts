@@ -1,5 +1,6 @@
 import type { SessionProfile } from '~/types/domain'
 import type { RegistrationInput } from '~/utils/registration'
+import { birthdayProfileFields } from '~/utils/birthdays'
 
 export const useAuthStore = defineStore('auth', () => {
   const profile = ref<SessionProfile | null>(null)
@@ -27,13 +28,17 @@ export const useAuthStore = defineStore('auth', () => {
     const phone = typeof user.user_metadata.phone === 'string'
       ? user.user_metadata.phone.slice(0, 30)
       : null
-    const { data: created, error: createError } = await $supabase
+    const baseProfile = { id: user.id, full_name: fullName, email: user.email || '', phone }
+    const insertProfile = (values: Record<string, unknown>) => $supabase
       .from('profiles')
-      .insert({ id: user.id, full_name: fullName, email: user.email || '', phone })
+      .insert(values)
       .select('id, full_name, email, avatar_path')
       .single()
-    if (createError) throw createError
-    return created
+    const withBirthday = await insertProfile({ ...baseProfile, ...birthdayProfileFields(user.user_metadata) })
+    // PGRST204: coluna ainda inexistente (migração de aniversariantes pendente); não bloqueia o primeiro acesso.
+    const result = withBirthday.error?.code === 'PGRST204' ? await insertProfile(baseProfile) : withBirthday
+    if (result.error) throw result.error
+    return result.data
   }
 
   async function hydrate() {
@@ -95,7 +100,9 @@ export const useAuthStore = defineStore('auth', () => {
         emailRedirectTo: `${window.location.origin}/entrar?cadastro=confirmado`,
         data: {
           full_name: input.fullName.trim(),
-          phone: input.phone.trim() || null
+          phone: input.phone.trim() || null,
+          birth_date: input.birthDate || null,
+          birthday_greetings_opt_in: Boolean(input.birthDate) && input.birthdayGreetingsOptIn
         }
       }
     })
