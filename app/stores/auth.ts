@@ -43,6 +43,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function hydrate() {
     const { $supabase, $authStorage } = useNuxtApp()
+    if ($authStorage && 'ready' in $authStorage) await $authStorage.ready()
     configured.value = Boolean($supabase)
     rememberAccess.value = $authStorage?.rememberAccess ?? false
     if (!$supabase) {
@@ -78,16 +79,16 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = false
   }
 
-  function setRememberAccess(value: boolean) {
+  async function setRememberAccess(value: boolean) {
     const { $authStorage } = useNuxtApp()
+    await $authStorage?.setRememberAccess(value)
     rememberAccess.value = value
-    $authStorage?.setRememberAccess(value)
   }
 
   async function signIn(email: string, password: string, remember = false) {
     const { $supabase } = useNuxtApp()
     if (!$supabase) throw new Error('Supabase não configurado. Consulte o README.')
-    setRememberAccess(remember)
+    await setRememberAccess(remember)
     const { error } = await $supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
     await hydrate()

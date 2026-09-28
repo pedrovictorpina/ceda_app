@@ -71,7 +71,7 @@ A migration inicial está em `supabase/migrations/`. `supabase/config.toml` desl
 ### Autenticação e autorização
 
 - O cliente usa PKCE e somente a chave pública.
-- “Lembrar meu acesso” controla onde a sessão do Supabase é persistida: `localStorage` somente após opt-in; caso contrário, `sessionStorage`, encerrado com a aba. O SDK exige `persistSession: true` para gerenciar/renovar a sessão, por isso um storage customizado seleciona a duração. Senhas nunca são armazenadas.
+- “Lembrar meu acesso” controla onde a sessão do Supabase é persistida: no APK, usa as preferências nativas do aplicativo; no navegador, usa `localStorage`. Ao desmarcar, usa `sessionStorage`, encerrado com a aba. O SDK exige `persistSession: true` para gerenciar/renovar a sessão, por isso um storage customizado seleciona a duração. Sessões de versões antigas do APK são migradas do WebView quando ainda existem. Senhas nunca são armazenadas.
 - Cadastro usa `signUp` e guarda em `user_metadata` somente nome/telefone e, opcionalmente, data de nascimento e o consentimento “Quero receber felicitações” para criar o perfil no primeiro acesso confirmado. Autorização continua exclusivamente fora de `user_metadata`. Com confirmação de e-mail habilitada, o perfil é criado após confirmar e entrar; com autoconfirmação local, é criado imediatamente.
 - A tabela `profiles` guarda dados pessoais; idade nunca é persistida, apenas derivada de `birth_date`.
 - Papéis do sistema (`member`, `administrator`, `pastor`, `cashier`, `counter`, `teacher`) são separados de tags/cargos e participações em ministérios.
