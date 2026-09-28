@@ -646,7 +646,17 @@ onMounted(loadPeople)
           v-model:page="currentPage"
           :total="filteredMembers.length"
           :items-per-page="pageSize"
+          :sibling-count="0"
+          class="w-full justify-center sm:hidden"
+          aria-label="Páginas de pessoas"
+        />
+        <UPagination
+          v-if="totalPages > 1"
+          v-model:page="currentPage"
+          :total="filteredMembers.length"
+          :items-per-page="pageSize"
           :sibling-count="1"
+          class="hidden sm:flex"
           show-edges
           aria-label="Páginas de pessoas"
         />
