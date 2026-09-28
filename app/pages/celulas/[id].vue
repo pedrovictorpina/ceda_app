@@ -1,60 +1,111 @@
 <script setup lang="ts">
-import type { CellAddress } from '~/types/domain'
+import type { CellDetailsFormValue, CellLeaderProfile, CellLeaderProfileFormValue, CellVisitFormValue } from '~/types/cells'
 import { canManageChurch } from '~/utils/authorization'
-import { CELL_WEEKDAYS, cellScheduleLabel } from '~/utils/cells'
+import { cellErrorMessage, cellShortScheduleLabel } from '~/utils/cellDirectory'
 
 definePageMeta({ middleware: 'cells' })
 
 const route = useRoute()
 const auth = useAuthStore()
+const toast = useToast()
 const cellStore = useCellsStore()
+const directory = useCellDirectory()
 const cellId = computed(() => String(route.params.id))
-const detail = computed(() => cellStore.selected)
+const highlightVisit = computed(() => typeof route.query.visita === 'string' ? route.query.visita : undefined)
+const detail = computed(() => cellStore.selected?.id === cellId.value ? cellStore.selected : null)
+const publicEntry = computed(() => detail.value ? undefined : directory.entries.value.find(entry => entry.id === cellId.value))
 const manager = computed(() => canManageChurch(auth.profile))
 const canManage = computed(() => detail.value?.access === 'leader' || detail.value?.access === 'manager')
-const canViewPrivate = computed(() => detail.value && detail.value.access !== 'invited')
+const canViewPrivate = computed(() => Boolean(detail.value && detail.value.access !== 'invited'))
+const myLeaderProfile = computed(() => detail.value?.leaders.find(leader => leader.userId === auth.profile?.id))
+const editableLeaderIds = computed(() => manager.value
+  ? (detail.value?.leaders ?? []).map(leader => leader.userId)
+  : myLeaderProfile.value ? [myLeaderProfile.value.userId] : [])
 const accessLabel = computed(() => ({ invited: 'Convite pendente', member: 'Membro', leader: 'Liderança', manager: 'Administração' }[detail.value?.access || 'member']))
-const weekdayItems = CELL_WEEKDAYS.map((label, value) => ({ label, value }))
-const announcementStatusLabels = { draft: 'Rascunho', published: 'Publicado', archived: 'Arquivado' } as const
-const pollStatusLabels = { draft: 'Rascunho', published: 'Publicada', closed: 'Encerrada' } as const
-const invitationStatusLabels = { pending: 'Pendente', accepted: 'Aceito', declined: 'Recusado', revoked: 'Revogado' } as const
+const requesterName = computed(() => auth.profile?.name ?? '')
+const booting = computed(() => (cellStore.loading || directory.loading.value) && !detail.value && !publicEntry.value)
 
-const basics = reactive({ name: '', description: '', weekday: 3, time: '20:00', active: true })
-const address = reactive<CellAddress>({ addressLine: '', city: '', region: '', postalCode: '' })
-const inviteEmail = ref('')
-const leaderEmail = ref('')
-const announcement = reactive({ title: '', body: '' })
-const poll = reactive({ question: '', optionsText: 'Sim\nNão' })
+const editOpen = ref(false)
+const leadersOpen = ref(false)
+const profileOpen = ref(false)
+const visitOpen = ref(false)
+const editingLeader = ref<CellLeaderProfile | undefined>()
 
-watch(detail, (value) => {
-  if (!value) return
-  Object.assign(basics, {
-    name: value.name,
-    description: value.description || '',
-    weekday: value.meetingWeekday ?? 3,
-    time: value.meetingTime?.slice(0, 5) || '20:00',
-    active: value.active
-  })
-  Object.assign(address, {
-    addressLine: value.address?.addressLine || '',
-    city: value.address?.city || '',
-    region: value.address?.region || '',
-    postalCode: value.address?.postalCode || ''
-  })
-}, { immediate: true })
+const detailsInitial = computed<CellDetailsFormValue | undefined>(() => detail.value
+  ? {
+      name: detail.value.name,
+      description: detail.value.description ?? '',
+      weekday: detail.value.meetingWeekday ?? null,
+      time: detail.value.meetingTime?.slice(0, 5) ?? '',
+      active: detail.value.active,
+      showFullAddress: detail.value.showFullAddress,
+      addressLine: detail.value.address?.addressLine ?? '',
+      neighborhood: detail.value.address?.neighborhood ?? '',
+      city: detail.value.address?.city ?? '',
+      region: detail.value.address?.region ?? '',
+      postalCode: detail.value.address?.postalCode ?? ''
+    }
+  : undefined)
 
 onMounted(async () => {
-  await cellStore.loadCell(cellId.value)
-  if (detail.value) useSeoMeta({ title: detail.value.name })
+  await Promise.all([cellStore.loadCell(cellId.value), directory.load(cellId.value)])
+  const name = detail.value?.name ?? publicEntry.value?.name
+  if (name) useSeoMeta({ title: name })
 })
 
-async function safely(action: () => Promise<unknown>, clear?: () => void) {
+function fail(caught: unknown, fallback: string) {
+  toast.add({ title: 'Não deu certo', description: cellErrorMessage(caught, fallback), color: 'error', icon: 'i-lucide-circle-alert' })
+}
+
+async function saveDetails(payload: { details: CellDetailsFormValue }) {
   try {
-    await action()
-    clear?.()
-  } catch {
-    // The store exposes the safe message in the page alert.
+    await cellStore.saveDetails(cellId.value, payload.details)
+    editOpen.value = false
+    toast.add({ title: 'Dados da célula salvos', color: 'success', icon: 'i-lucide-circle-check' })
+  } catch (caught) {
+    fail(caught, 'Não foi possível salvar os dados da célula.')
   }
+}
+
+function editLeader(leader?: CellLeaderProfile) {
+  editingLeader.value = leader
+  leadersOpen.value = false
+  profileOpen.value = true
+}
+
+async function saveLeaderProfile(form: CellLeaderProfileFormValue) {
+  if (!editingLeader.value) return
+  try {
+    await cellStore.saveLeaderProfile(cellId.value, editingLeader.value.userId, form)
+    profileOpen.value = false
+    toast.add({ title: 'Perfil de líder salvo', color: 'success', icon: 'i-lucide-circle-check' })
+  } catch (caught) {
+    fail(caught, 'Não foi possível salvar o perfil.')
+  }
+}
+
+async function respondInvitation(accepted: boolean) {
+  const invitationId = detail.value?.pendingInvitationId
+  if (!invitationId) return
+  try {
+    await cellStore.respondInvitation(invitationId, cellId.value, accepted)
+  } catch (caught) {
+    fail(caught, 'Não foi possível responder ao convite.')
+  }
+}
+
+async function submitVisit(form: CellVisitFormValue) {
+  const ok = await directory.requestVisit(cellId.value, form)
+  if (ok) toast.add({ title: 'Pedido enviado', description: 'A liderança foi avisada no app.', color: 'success', icon: 'i-lucide-circle-check' })
+  return ok
+}
+
+async function cancelVisit() {
+  const visit = publicEntry.value?.myVisitRequest
+  if (!visit) return false
+  const ok = await directory.cancelVisit(cellId.value, visit.id)
+  if (ok) visitOpen.value = false
+  return ok
 }
 </script>
 
@@ -71,22 +122,23 @@ async function safely(action: () => Promise<unknown>, clear?: () => void) {
         variant="ghost"
         icon="i-lucide-arrow-left"
         label="Voltar para células"
+        class="min-h-11"
       />
     </div>
 
     <div
-      v-if="cellStore.loading"
+      v-if="booting"
       class="py-12 text-center text-muted"
     >
       <BrandLoader label="Carregando célula…" />
     </div>
+
     <template v-else-if="detail">
       <PageIntro
         :title="detail.name"
         :description="detail.description || 'Espaço privado da célula.'"
         icon="i-lucide-house-heart"
       />
-
       <div class="mb-5 flex flex-wrap items-center gap-2">
         <UBadge
           color="neutral"
@@ -94,7 +146,14 @@ async function safely(action: () => Promise<unknown>, clear?: () => void) {
         >
           {{ accessLabel }}
         </UBadge>
-        <span class="text-sm text-muted">{{ cellScheduleLabel(detail.meetingWeekday, detail.meetingTime) }}</span>
+        <UBadge
+          v-if="!detail.active"
+          color="warning"
+          variant="subtle"
+        >
+          Inativa
+        </UBadge>
+        <span class="text-sm text-muted">{{ cellShortScheduleLabel(detail.meetingWeekday, detail.meetingTime) }}</span>
       </div>
 
       <UAlert
@@ -117,500 +176,141 @@ async function safely(action: () => Promise<unknown>, clear?: () => void) {
       <UCard
         v-if="detail.access === 'invited'"
         class="mb-6"
+        :ui="{ root: 'rounded-2xl' }"
       >
-        <template #header>
-          <h2 class="font-semibold">
-            Convite pendente
-          </h2>
-        </template>
-        <p class="text-sm text-muted">
-          Aceite para participar. Endereço, membros, comunicados e enquetes permanecem privados até a aprovação.
+        <h2 class="font-semibold">
+          Convite pendente
+        </h2>
+        <p class="mt-1 text-sm text-muted">
+          Aceite para participar. Endereço completo, membros, comunicados e enquetes aparecem após o aceite.
         </p>
-        <template #footer>
-          <div class="flex gap-2">
-            <UButton
-              :disabled="cellStore.demoMode"
-              label="Aceitar convite"
-              @click="safely(() => cellStore.respondInvitation(cellStore.selected?.pendingInvitationId || '', cellId, true))"
-            />
-            <UButton
-              color="neutral"
-              variant="outline"
-              :disabled="cellStore.demoMode"
-              label="Recusar"
-              @click="safely(() => cellStore.respondInvitation(cellStore.selected?.pendingInvitationId || '', cellId, false))"
-            />
-          </div>
-        </template>
+        <div class="mt-4 flex gap-2">
+          <UButton
+            :disabled="cellStore.demoMode"
+            label="Aceitar convite"
+            class="min-h-11"
+            @click="respondInvitation(true)"
+          />
+          <UButton
+            color="neutral"
+            variant="outline"
+            :disabled="cellStore.demoMode"
+            label="Recusar"
+            class="min-h-11"
+            @click="respondInvitation(false)"
+          />
+        </div>
       </UCard>
 
-      <template v-if="canViewPrivate">
-        <div class="grid gap-5 lg:grid-cols-2">
-          <UCard>
-            <template #header>
-              <h2 class="font-semibold">
-                Encontro e endereço privado
-              </h2>
-              <p class="mt-1 text-xs text-muted">
-                Visível apenas para membros aprovados, líderes e administração.
-              </p>
-            </template>
-            <div v-if="detail.address">
-              <p>{{ detail.address.addressLine }}</p>
-              <p class="text-sm text-muted">
-                {{ detail.address.city }} · {{ detail.address.region }}<span v-if="detail.address.postalCode"> · {{ detail.address.postalCode }}</span>
-              </p>
-            </div>
-            <p
-              v-else
-              class="text-sm text-muted"
-            >
-              Endereço ainda não cadastrado.
-            </p>
-          </UCard>
-
-          <UCard>
-            <template #header>
-              <h2 class="font-semibold">
-                Comunicados
-              </h2>
-            </template>
-            <div
-              v-if="detail.announcements.length"
-              class="space-y-4"
-            >
-              <article
-                v-for="item in detail.announcements"
-                :key="item.id"
-                class="rounded-lg border border-default p-3"
-              >
-                <div class="flex items-start justify-between gap-2">
-                  <h3 class="font-medium">
-                    {{ item.title }}
-                  </h3><UBadge
-                    color="neutral"
-                    variant="subtle"
-                  >
-                    {{ announcementStatusLabels[item.status] }}
-                  </UBadge>
-                </div>
-                <p class="mt-2 whitespace-pre-line text-sm text-muted">
-                  {{ item.body }}
-                </p>
-                <div
-                  v-if="canManage && item.status !== 'archived'"
-                  class="mt-3 flex gap-2"
-                >
-                  <UButton
-                    v-if="item.status === 'draft'"
-                    size="xs"
-                    :disabled="cellStore.demoMode"
-                    label="Publicar"
-                    @click="safely(() => cellStore.setAnnouncementStatus(cellId, item.id, 'published'))"
-                  />
-                  <UButton
-                    size="xs"
-                    color="neutral"
-                    variant="outline"
-                    :disabled="cellStore.demoMode"
-                    label="Arquivar"
-                    @click="safely(() => cellStore.setAnnouncementStatus(cellId, item.id, 'archived'))"
-                  />
-                </div>
-              </article>
-            </div>
-            <p
-              v-else
-              class="text-sm text-muted"
-            >
-              Nenhum comunicado disponível.
-            </p>
-          </UCard>
-        </div>
-
-        <UCard class="mt-5">
-          <template #header>
-            <h2 class="font-semibold">
-              Enquetes
-            </h2>
-          </template>
-          <div
-            v-if="detail.polls.length"
-            class="grid gap-4 lg:grid-cols-2"
-          >
-            <article
-              v-for="item in detail.polls"
-              :key="item.id"
-              class="rounded-lg border border-default p-4"
-            >
-              <div class="flex items-start justify-between gap-2">
-                <h3 class="font-medium">
-                  {{ item.question }}
-                </h3><UBadge
-                  color="neutral"
-                  variant="subtle"
-                >
-                  {{ pollStatusLabels[item.status] }}
-                </UBadge>
-              </div>
-              <div class="mt-3 space-y-2">
-                <button
-                  v-for="option in item.options"
-                  :key="option.id"
-                  class="focus-ring flex w-full items-center justify-between rounded-lg border border-default px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-70"
-                  :disabled="cellStore.demoMode || item.status !== 'published' || Boolean(item.selectedOptionId) || canManage"
-                  @click="safely(() => cellStore.vote(cellId, item.id, option.id))"
-                >
-                  <span>{{ option.label }}</span>
-                  <span v-if="canManage">{{ option.votes }} voto(s)</span>
-                  <UIcon
-                    v-else-if="item.selectedOptionId === option.id"
-                    name="i-lucide-check-circle-2"
-                    class="text-primary"
-                  />
-                </button>
-              </div>
-              <div
-                v-if="canManage"
-                class="mt-3 flex gap-2"
-              >
-                <UButton
-                  v-if="item.status === 'draft'"
-                  size="xs"
-                  :disabled="cellStore.demoMode"
-                  label="Publicar"
-                  @click="safely(() => cellStore.setPollStatus(cellId, item.id, 'published'))"
-                />
-                <UButton
-                  v-if="item.status === 'published'"
-                  size="xs"
-                  color="neutral"
-                  variant="outline"
-                  :disabled="cellStore.demoMode"
-                  label="Encerrar"
-                  @click="safely(() => cellStore.setPollStatus(cellId, item.id, 'closed'))"
-                />
-              </div>
-            </article>
-          </div>
-          <p
-            v-else
-            class="text-sm text-muted"
-          >
-            Nenhuma enquete disponível.
+      <div
+        v-if="canViewPrivate"
+        class="grid gap-5 lg:grid-cols-2"
+      >
+        <CellsMeetingCard
+          :detail="detail"
+          :can-manage="canManage"
+          @edit="editOpen = true"
+          @leaders="leadersOpen = true"
+        />
+        <CellsVisitRequestsCard
+          v-if="canManage && !cellStore.demoMode"
+          :cell-id="detail.id"
+          :cell-name="detail.name"
+          :highlight-id="highlightVisit"
+        />
+        <UCard
+          v-if="myLeaderProfile"
+          :ui="{ root: 'rounded-2xl' }"
+        >
+          <h2 class="font-semibold">
+            Seu perfil de líder
+          </h2>
+          <p class="mt-1 text-sm text-muted">
+            {{ myLeaderProfile.bio || 'Escreva um resumo curto e informe WhatsApp e Instagram para quem quer conhecer a célula.' }}
           </p>
+          <UButton
+            class="mt-3 min-h-11"
+            color="neutral"
+            variant="soft"
+            icon="i-lucide-user-pen"
+            label="Editar meu perfil"
+            :disabled="cellStore.demoMode"
+            @click="editLeader(myLeaderProfile)"
+          />
         </UCard>
+        <CellsAnnouncementsCard
+          :detail="detail"
+          :can-manage="canManage"
+        />
+        <CellsPollsCard
+          :detail="detail"
+          :can-manage="canManage"
+          class="lg:col-span-2"
+        />
+        <CellsMembersCard
+          v-if="canManage"
+          :detail="detail"
+          :manager="manager"
+        />
+        <CellsLeadershipCard
+          v-if="manager"
+          :cell-id="detail.id"
+        />
+      </div>
 
-        <template v-if="canManage">
-          <div class="mt-6 grid gap-5 xl:grid-cols-2">
-            <UCard>
-              <template #header>
-                <h2 class="font-semibold">
-                  Editar dados básicos
-                </h2>
-              </template>
-              <form
-                class="grid gap-4 sm:grid-cols-2"
-                @submit.prevent="safely(() => cellStore.saveBasics(cellId, basics))"
-              >
-                <UFormField
-                  label="Nome"
-                  required
-                >
-                  <UInput
-                    v-model="basics.name"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField label="Descrição">
-                  <UInput
-                    v-model="basics.description"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField label="Dia">
-                  <USelect
-                    v-model="basics.weekday"
-                    :items="weekdayItems"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField label="Horário">
-                  <UInput
-                    v-model="basics.time"
-                    type="time"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UCheckbox
-                  v-model="basics.active"
-                  label="Célula ativa"
-                />
-                <div class="sm:col-span-2">
-                  <UButton
-                    type="submit"
-                    :disabled="cellStore.demoMode"
-                    :loading="cellStore.saving"
-                    label="Salvar dados"
-                  />
-                </div>
-              </form>
-            </UCard>
+      <CellsDetailsForm
+        v-model:open="editOpen"
+        mode="edit"
+        :initial="detailsInitial"
+        :saving="cellStore.saving"
+        @submit="saveDetails"
+      />
+      <CellsLeadersModal
+        v-model:open="leadersOpen"
+        :leaders="detail.leaders"
+        :cell-name="detail.name"
+        :requester-name="requesterName"
+        :editable-ids="cellStore.demoMode ? [] : editableLeaderIds"
+        @edit="editLeader"
+      />
+      <CellsLeaderProfileDrawer
+        v-model:open="profileOpen"
+        :leader="editingLeader"
+        :self="editingLeader?.userId === auth.profile?.id"
+        :saving="cellStore.saving"
+        @submit="saveLeaderProfile"
+      />
+    </template>
 
-            <UCard>
-              <template #header>
-                <h2 class="font-semibold">
-                  Editar endereço privado
-                </h2>
-              </template>
-              <form
-                class="grid gap-4 sm:grid-cols-2"
-                @submit.prevent="safely(() => cellStore.saveAddress(cellId, address))"
-              >
-                <UFormField
-                  class="sm:col-span-2"
-                  label="Endereço"
-                  required
-                >
-                  <UInput
-                    v-model="address.addressLine"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField
-                  label="Cidade"
-                  required
-                >
-                  <UInput
-                    v-model="address.city"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField
-                  label="Estado/região"
-                  required
-                >
-                  <UInput
-                    v-model="address.region"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField label="CEP">
-                  <UInput
-                    v-model="address.postalCode"
-                    class="w-full"
-                  />
-                </UFormField>
-                <div class="sm:col-span-2">
-                  <UButton
-                    type="submit"
-                    :disabled="cellStore.demoMode"
-                    :loading="cellStore.saving"
-                    label="Salvar endereço"
-                  />
-                </div>
-              </form>
-            </UCard>
-
-            <UCard>
-              <template #header>
-                <h2 class="font-semibold">
-                  Membros e convites
-                </h2>
-                <p class="mt-1 text-xs text-muted">
-                  Convites aceitam somente e-mails de usuários já cadastrados.
-                </p>
-              </template>
-              <form
-                class="mb-4 flex gap-2"
-                @submit.prevent="safely(() => cellStore.inviteMember(cellId, inviteEmail), () => inviteEmail = '')"
-              >
-                <UInput
-                  v-model="inviteEmail"
-                  type="email"
-                  placeholder="membro@exemplo.com"
-                  class="flex-1"
-                />
-                <UButton
-                  type="submit"
-                  :disabled="cellStore.demoMode"
-                  label="Convidar"
-                />
-              </form>
-              <div class="space-y-2">
-                <div
-                  v-for="member in detail.members"
-                  :key="member.userId"
-                  class="flex items-center justify-between gap-3 rounded-lg border border-default p-3"
-                >
-                  <div>
-                    <p class="text-sm font-medium">
-                      {{ member.name }}
-                    </p><p class="text-xs text-muted">
-                      {{ member.email }}
-                    </p>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <UBadge
-                      v-if="member.isLeader"
-                      color="primary"
-                      variant="subtle"
-                    >
-                      Líder
-                    </UBadge>
-                    <UButton
-                      v-if="manager && member.isLeader"
-                      size="xs"
-                      color="neutral"
-                      variant="outline"
-                      :disabled="cellStore.demoMode"
-                      label="Remover liderança"
-                      @click="safely(() => cellStore.removeLeader(cellId, member.userId))"
-                    />
-                    <UButton
-                      v-if="!member.isLeader"
-                      size="xs"
-                      color="error"
-                      variant="ghost"
-                      :disabled="cellStore.demoMode"
-                      icon="i-lucide-user-minus"
-                      aria-label="Remover membro"
-                      @click="safely(() => cellStore.removeMember(cellId, member.userId))"
-                    />
-                  </div>
-                </div>
-              </div>
-              <div
-                v-if="detail.invitations.length"
-                class="mt-4 border-t border-default pt-4"
-              >
-                <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                  Histórico de convites
-                </p>
-                <div
-                  v-for="item in detail.invitations"
-                  :key="item.id"
-                  class="flex items-center justify-between gap-3 py-1 text-sm"
-                >
-                  <span class="truncate">{{ item.email }}</span>
-                  <UBadge
-                    color="neutral"
-                    variant="subtle"
-                  >
-                    {{ invitationStatusLabels[item.status] }}
-                  </UBadge>
-                </div>
-              </div>
-              <p class="mt-4 text-xs text-muted">
-                A liderança não pode remover outro líder pela lista de membros. O banco impede remover o último líder.
-              </p>
-            </UCard>
-
-            <UCard v-if="manager">
-              <template #header>
-                <h2 class="font-semibold">
-                  Atribuir liderança
-                </h2>
-              </template>
-              <form
-                class="flex gap-2"
-                @submit.prevent="safely(() => cellStore.assignLeader(cellId, leaderEmail), () => leaderEmail = '')"
-              >
-                <UInput
-                  v-model="leaderEmail"
-                  type="email"
-                  placeholder="lider@exemplo.com"
-                  class="flex-1"
-                />
-                <UButton
-                  type="submit"
-                  :disabled="cellStore.demoMode"
-                  label="Atribuir"
-                />
-              </form>
-              <p class="mt-3 text-xs text-muted">
-                Somente administradores e pastores atribuem ou removem líderes; autoatribuição é bloqueada por RLS e trigger.
-              </p>
-            </UCard>
-
-            <UCard>
-              <template #header>
-                <h2 class="font-semibold">
-                  Novo comunicado
-                </h2>
-              </template>
-              <form
-                class="space-y-4"
-                @submit.prevent="safely(() => cellStore.createAnnouncement(cellId, announcement.title, announcement.body), () => Object.assign(announcement, { title: '', body: '' }))"
-              >
-                <UFormField
-                  label="Título"
-                  required
-                >
-                  <UInput
-                    v-model="announcement.title"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField
-                  label="Mensagem"
-                  required
-                >
-                  <UTextarea
-                    v-model="announcement.body"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UButton
-                  type="submit"
-                  :disabled="cellStore.demoMode"
-                  label="Salvar rascunho"
-                />
-              </form>
-              <p class="mt-3 text-xs text-muted">
-                Ao publicar, o app cria notificações internas para membros e co-líderes. Push externo ainda não é enviado.
-              </p>
-            </UCard>
-
-            <UCard>
-              <template #header>
-                <h2 class="font-semibold">
-                  Nova enquete
-                </h2>
-              </template>
-              <form
-                class="space-y-4"
-                @submit.prevent="safely(() => cellStore.createPoll(cellId, poll.question, poll.optionsText.split('\n')), () => Object.assign(poll, { question: '', optionsText: 'Sim\nNão' }))"
-              >
-                <UFormField
-                  label="Pergunta"
-                  required
-                >
-                  <UInput
-                    v-model="poll.question"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField
-                  label="Opções"
-                  hint="Uma opção por linha; mínimo de duas."
-                  required
-                >
-                  <UTextarea
-                    v-model="poll.optionsText"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UButton
-                  type="submit"
-                  :disabled="cellStore.demoMode"
-                  label="Criar rascunho"
-                />
-              </form>
-            </UCard>
-          </div>
-        </template>
-      </template>
+    <template v-else-if="publicEntry">
+      <PageIntro
+        :title="publicEntry.name"
+        :description="publicEntry.description || 'Conheça a célula e combine uma visita com a liderança.'"
+        icon="i-lucide-house-heart"
+      />
+      <div class="mx-auto max-w-xl">
+        <CellsDirectoryCard
+          :entry="publicEntry"
+          :show-open-link="false"
+          @leaders="leadersOpen = true"
+          @visit="visitOpen = true"
+        />
+      </div>
+      <CellsLeadersModal
+        v-model:open="leadersOpen"
+        :leaders="publicEntry.leaders"
+        :cell-name="publicEntry.name"
+        :requester-name="requesterName"
+      />
+      <CellsVisitDrawer
+        v-model:open="visitOpen"
+        :entry="publicEntry"
+        :requester-name="requesterName"
+        :sending="directory.sending.value"
+        :error="directory.error.value"
+        :submit="submitVisit"
+        :cancel="cancelVisit"
+      />
     </template>
 
     <UAlert
@@ -618,7 +318,7 @@ async function safely(action: () => Promise<unknown>, clear?: () => void) {
       color="error"
       variant="subtle"
       title="Sem acesso"
-      :description="cellStore.errorMessage || 'Esta célula não existe ou não está disponível para sua conta.'"
+      :description="directory.error.value || 'Esta célula não existe, está inativa ou não está disponível para sua conta.'"
     />
   </div>
 </template>

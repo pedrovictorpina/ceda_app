@@ -1,5 +1,5 @@
+import type { CellDetailsFormValue, CellLeaderProfileFormValue } from '~/types/cells'
 import type {
-  CellAddress,
   CellAnnouncement,
   CellDetail,
   CellInvitation,
@@ -7,7 +7,10 @@ import type {
   CellPoll,
   CellSummary
 } from '~/types/domain'
+import { cellDetailsRpcArgs } from '~/utils/cellAddress'
+import { cellErrorMessage, mapDirectoryRows } from '~/utils/cellDirectory'
 import { aggregatePollVotes, DEMO_CELLS, normalizeInvitationEmail, resolveCellAccess } from '~/utils/cells'
+import { demoCellDetail } from '~/utils/cellsDemo'
 
 interface CellRow {
   community_id: string
@@ -28,42 +31,6 @@ interface ProfileRow { id: string, full_name: string, email: string }
 
 function one<T>(value: T | T[] | null): T | null {
   return Array.isArray(value) ? value[0] || null : value
-}
-
-function demoDetail(summary: CellSummary): CellDetail {
-  const managing = summary.access === 'leader'
-  return {
-    ...summary,
-    address: summary.access === 'invited'
-      ? undefined
-      : {
-          addressLine: 'Rua de demonstração, 123',
-          city: 'São Paulo',
-          region: 'SP',
-          postalCode: '00000-000'
-        },
-    members: managing
-      ? [
-          { userId: 'demo-leader', name: 'Líder de demonstração', email: 'lider@demo.local', isLeader: true },
-          { userId: 'demo-member', name: 'Membro de demonstração', email: 'membro@demo.local', isLeader: false }
-        ]
-      : [],
-    invitations: summary.access === 'invited' ? [{ id: 'demo-invitation', cellId: summary.id, email: 'voce@demo.local', status: 'pending', createdAt: new Date().toISOString() }] : [],
-    announcements: summary.access === 'invited' ? [] : [{ id: 'demo-announcement', cellId: summary.id, title: 'Encontro desta semana', body: 'Comunicado interno de demonstração para os membros da célula.', status: 'published', createdAt: new Date().toISOString() }],
-    polls: summary.access === 'invited'
-      ? []
-      : [{
-          id: 'demo-poll',
-          cellId: summary.id,
-          question: 'Qual o melhor horário para o próximo encontro?',
-          status: 'published',
-          createdAt: new Date().toISOString(),
-          options: [
-            { id: 'demo-option-a', label: '19h30', position: 0, votes: managing ? 2 : 0 },
-            { id: 'demo-option-b', label: '20h', position: 1, votes: managing ? 1 : 0 }
-          ]
-        }]
-  }
 }
 
 export const useCellsStore = defineStore('cells', () => {
@@ -126,7 +93,7 @@ export const useCellsStore = defineStore('cells', () => {
         } satisfies CellSummary]
       })
     } catch (error) {
-      errorMessage.value = error instanceof Error ? error.message : 'Não foi possível carregar as células.'
+      errorMessage.value = cellErrorMessage(error, 'Não foi possível carregar as células.')
       cells.value = []
     } finally {
       loading.value = false
@@ -145,25 +112,28 @@ export const useCellsStore = defineStore('cells', () => {
         return
       }
       if (demoMode.value) {
-        selected.value = demoDetail(summary)
+        selected.value = demoCellDetail(summary)
         return
       }
 
       const supabase = backend()
       const managerView = summary.access === 'manager' || summary.access === 'leader'
-      const [addressResult, announcementResult, pollResult, membershipResult, invitationResult, leaderResult] = await Promise.all([
-        supabase.from('cell_addresses').select('address_line, city, region, postal_code').eq('cell_id', cellId).maybeSingle(),
+      const [addressResult, announcementResult, pollResult, membershipResult, invitationResult, leaderResult, settingsResult, directoryResult] = await Promise.all([
+        supabase.from('cell_addresses').select('address_line, neighborhood, city, region, postal_code').eq('cell_id', cellId).maybeSingle(),
         supabase.from('cell_announcements').select('id, cell_id, title, body, status, created_at').eq('cell_id', cellId).order('created_at', { ascending: false }),
         supabase.from('cell_polls').select('id, cell_id, question, status, created_at').eq('cell_id', cellId).order('created_at', { ascending: false }),
         managerView ? supabase.from('community_memberships').select('community_id, user_id, status').eq('community_id', cellId).eq('status', 'approved') : Promise.resolve({ data: [], error: null }),
         supabase.from('cell_invitations').select('id, cell_id, invitee_email, status, created_at').eq('cell_id', cellId).order('created_at', { ascending: false }),
-        managerView ? supabase.from('cell_leaders').select('cell_id, user_id').eq('cell_id', cellId) : Promise.resolve({ data: [], error: null })
+        managerView ? supabase.from('cell_leaders').select('cell_id, user_id').eq('cell_id', cellId) : Promise.resolve({ data: [], error: null }),
+        supabase.from('cells').select('show_full_address_to_members').eq('community_id', cellId).maybeSingle(),
+        supabase.rpc('list_cell_directory', { p_cell_id: cellId })
       ])
-      const failure = addressResult.error || announcementResult.error || pollResult.error || membershipResult.error || invitationResult.error || leaderResult.error
+      const failure = addressResult.error || announcementResult.error || pollResult.error || membershipResult.error || invitationResult.error || leaderResult.error || settingsResult.error || directoryResult.error
       if (failure) throw failure
 
       const memberships = membershipResult.data as MembershipRow[]
-      const leaderIds = new Set((leaderResult.data as LeaderRow[]).map(item => item.user_id))
+      const leaders = mapDirectoryRows(directoryResult.data)[0]?.leaders ?? []
+      const leaderIds = new Set([...(leaderResult.data as LeaderRow[]).map(item => item.user_id), ...leaders.map(leader => leader.userId)])
       let members: CellMember[] = []
       if (memberships.length) {
         const profileResult = await supabase.from('profiles').select('id, full_name, email').in('id', memberships.map(item => item.user_id))
@@ -193,9 +163,12 @@ export const useCellsStore = defineStore('cells', () => {
       const address = addressResult.data
       selected.value = {
         ...summary,
+        showFullAddress: settingsResult.data?.show_full_address_to_members !== false,
+        leaders,
         address: address
           ? {
               addressLine: address.address_line,
+              neighborhood: address.neighborhood || undefined,
               city: address.city,
               region: address.region,
               postalCode: address.postal_code || undefined
@@ -233,7 +206,7 @@ export const useCellsStore = defineStore('cells', () => {
       }
     } catch (error) {
       selected.value = null
-      errorMessage.value = error instanceof Error ? error.message : 'Não foi possível carregar esta célula.'
+      errorMessage.value = cellErrorMessage(error, 'Não foi possível carregar esta célula.')
     } finally {
       loading.value = false
     }
@@ -247,26 +220,24 @@ export const useCellsStore = defineStore('cells', () => {
       await loadCells()
       if (cellId) await loadCell(cellId)
     } catch (error) {
-      errorMessage.value = error instanceof Error ? error.message : 'Não foi possível salvar a alteração.'
+      errorMessage.value = cellErrorMessage(error, 'Não foi possível salvar a alteração.')
       throw error
     } finally {
       saving.value = false
     }
   }
 
-  async function createCell(input: { name: string, description: string, weekday?: number, time?: string, leaderEmails: string[] }) {
+  async function createCell(input: { details: CellDetailsFormValue, leaderEmails: string[] }) {
     return withSave(async () => {
       const supabase = backend()
       const emails = [...new Set(input.leaderEmails.map(normalizeInvitationEmail).filter(Boolean))]
+      if (!emails.length) throw new Error('Informe o e-mail de pelo menos um líder.')
       const profileResult = await supabase.from('profiles').select('id, email_normalized').in('email_normalized', emails)
       if (profileResult.error) throw profileResult.error
       if (profileResult.data.length !== emails.length) throw new Error('Todos os líderes precisam ter cadastro ativo no CEDA.')
-      const result = await supabase.rpc('create_cell', {
-        cell_name: input.name,
-        cell_description: input.description,
-        weekday: input.weekday ?? null,
-        meeting_at: input.time || null,
-        leader_ids: profileResult.data.map(profile => profile.id)
+      const result = await supabase.rpc('create_cell_with_details', {
+        ...cellDetailsRpcArgs(input.details),
+        p_leader_ids: profileResult.data.map(profile => profile.id)
       })
       if (result.error) throw result.error
     })
@@ -279,25 +250,21 @@ export const useCellsStore = defineStore('cells', () => {
     }, cellId)
   }
 
-  async function saveBasics(cellId: string, input: { name: string, description: string, weekday?: number, time?: string, active: boolean }) {
+  async function saveDetails(cellId: string, details: CellDetailsFormValue) {
     return withSave(async () => {
-      const supabase = backend()
-      const communityResult = await supabase.from('communities').update({ name: input.name, description: input.description || null }).eq('id', cellId)
-      if (communityResult.error) throw communityResult.error
-      const cellResult = await supabase.from('cells').update({ meeting_weekday: input.weekday ?? null, meeting_time: input.time || null, active: input.active, updated_by: auth.profile?.id }).eq('community_id', cellId)
-      if (cellResult.error) throw cellResult.error
+      const result = await backend().rpc('update_cell_details', { p_cell_id: cellId, ...cellDetailsRpcArgs(details), p_active: details.active })
+      if (result.error) throw result.error
     }, cellId)
   }
 
-  async function saveAddress(cellId: string, address: CellAddress) {
+  async function saveLeaderProfile(cellId: string, userId: string, profile: CellLeaderProfileFormValue) {
     return withSave(async () => {
-      const result = await backend().from('cell_addresses').upsert({
-        cell_id: cellId,
-        address_line: address.addressLine,
-        city: address.city,
-        region: address.region,
-        postal_code: address.postalCode || null,
-        updated_by: auth.profile?.id
+      const result = await backend().rpc('update_cell_leader_profile', {
+        p_cell_id: cellId,
+        p_user_id: userId,
+        p_bio: profile.bio.trim() || null,
+        p_whatsapp: profile.whatsapp.trim() || null,
+        p_instagram: profile.instagram.trim() || null
       })
       if (result.error) throw result.error
     }, cellId)
@@ -310,9 +277,16 @@ export const useCellsStore = defineStore('cells', () => {
     }, cellId)
   }
 
+  async function addMember(cellId: string, userId: string) {
+    return withSave(async () => {
+      const result = await backend().rpc('add_cell_member', { p_cell_id: cellId, p_user_id: userId })
+      if (result.error) throw result.error
+    }, cellId)
+  }
+
   async function removeMember(cellId: string, userId: string) {
     return withSave(async () => {
-      const result = await backend().from('community_memberships').delete().eq('community_id', cellId).eq('user_id', userId)
+      const result = await backend().rpc('remove_cell_member', { p_cell_id: cellId, p_user_id: userId })
       if (result.error) throw result.error
     }, cellId)
   }
@@ -391,9 +365,10 @@ export const useCellsStore = defineStore('cells', () => {
     loadCell,
     createCell,
     respondInvitation,
-    saveBasics,
-    saveAddress,
+    saveDetails,
+    saveLeaderProfile,
     inviteMember,
+    addMember,
     removeMember,
     assignLeader,
     removeLeader,
