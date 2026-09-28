@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { validateBirthDate } from '~/utils/birthdays'
+import { buildRegistrationInvitationUrl, invitationDescription, type InvitationSource } from '~/utils/invitations'
 
 definePageMeta({ middleware: 'auth' })
 useSeoMeta({ title: 'Perfil' })
@@ -32,7 +33,10 @@ const familyEditorOpen = ref(false)
 const familyDeleteOpen = ref(false)
 const familyMemberToDelete = ref<FamilyMember | null>(null)
 const birthdayPeriod = ref<BirthdayPeriod>('today')
-const familyForm = reactive({ id: '', name: '', relationship: '', birthDate: '' })
+const inviteImageOpen = ref(false)
+const familyInviteOpen = ref(false)
+const inviteStatus = ref('')
+const familyForm = reactive({ id: '', name: '', relationship: '', birthDate: '', showInvitation: true })
 const sexItems = [
   { label: 'Feminino', value: 'female' },
   { label: 'Masculino', value: 'male' },
@@ -115,6 +119,7 @@ function resetFamilyForm() {
   familyForm.name = ''
   familyForm.relationship = ''
   familyForm.birthDate = ''
+  familyForm.showInvitation = true
 }
 
 function openFamilyEditor(member?: FamilyMember) {
@@ -124,6 +129,7 @@ function openFamilyEditor(member?: FamilyMember) {
     familyForm.name = member.full_name
     familyForm.relationship = member.relationship
     familyForm.birthDate = member.birth_date
+    familyForm.showInvitation = false
   } else {
     resetFamilyForm()
   }
@@ -162,6 +168,8 @@ async function saveFamilyMember() {
     relationship: familyForm.relationship.trim(),
     birth_date: familyForm.birthDate
   }
+  const isNewFamilyMember = !familyForm.id
+  const showInvitation = isNewFamilyMember && familyForm.showInvitation
   const { error } = familyForm.id
     ? await $supabase.from('family_members').update(payload).eq('id', familyForm.id)
     : await $supabase.from('family_members').insert({ ...payload, owner_id: auth.profile.id })
@@ -174,6 +182,35 @@ async function saveFamilyMember() {
   familyStatus.value = familyForm.id ? 'Familiar atualizado.' : 'Familiar cadastrado.'
   resetFamilyForm()
   await loadFamilyMembers()
+  if (showInvitation) familyInviteOpen.value = true
+}
+
+function invitationUrl(source: InvitationSource = 'general') {
+  return buildRegistrationInvitationUrl(source)
+}
+
+const generalInvitationUrl = computed(() => invitationUrl())
+const familyInvitationUrl = computed(() => invitationUrl('family'))
+
+async function copyInvitation(source: InvitationSource = 'general') {
+  try {
+    await navigator.clipboard.writeText(invitationUrl(source))
+    inviteStatus.value = source === 'family' ? 'Link de convite para a família copiado.' : 'Link de convite copiado.'
+  } catch {
+    inviteStatus.value = 'Não foi possível copiar o link neste aparelho.'
+  }
+}
+
+async function shareInvitation(source: InvitationSource = 'general') {
+  const url = invitationUrl(source)
+  const description = invitationDescription(source)
+  if (!navigator.share) return copyInvitation(source)
+  try {
+    await navigator.share({ title: 'Convite CEDA', text: description, url })
+    inviteStatus.value = 'Convite pronto para compartilhar.'
+  } catch {
+    // Fechar a folha de compartilhamento não requer uma mensagem de erro.
+  }
 }
 
 function requestFamilyDeletion(member: FamilyMember) {
@@ -588,6 +625,13 @@ onMounted(async () => {
               </div>
               <div class="flex shrink-0 gap-1">
                 <UButton
+                  color="primary"
+                  variant="ghost"
+                  icon="i-lucide-link"
+                  :aria-label="`Copiar convite para ${member.full_name}`"
+                  @click="copyInvitation('family')"
+                />
+                <UButton
                   color="neutral"
                   variant="ghost"
                   icon="i-lucide-pencil"
@@ -617,6 +661,56 @@ onMounted(async () => {
           color="neutral"
           variant="subtle"
           :description="familyStatus"
+        />
+      </UCard>
+
+      <UCard class="max-w-2xl">
+        <template #header>
+          <div>
+            <h2 class="font-semibold">
+              Convite para cadastro
+            </h2>
+            <p class="mt-1 text-sm text-muted">
+              Compartilhe este link para que novas pessoas criem a própria conta na CEDA.
+            </p>
+          </div>
+        </template>
+        <UInput
+          :model-value="generalInvitationUrl"
+          readonly
+          aria-label="Link fixo de convite para cadastro"
+          class="w-full"
+        />
+        <div class="mt-3 flex flex-wrap gap-2">
+          <UButton
+            icon="i-lucide-copy"
+            label="Copiar link"
+            @click="copyInvitation()"
+          />
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-share-2"
+            label="Compartilhar link"
+            @click="shareInvitation()"
+          />
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-qr-code"
+            label="Gerar imagem com QR Code"
+            @click="inviteImageOpen = true"
+          />
+        </div>
+        <p class="mt-4 text-xs leading-5 text-muted">
+          Todo convite cria uma conta de membro. Papéis como administrador, pastor, caixa, balcão e professor só podem ser concedidos por um administrador em Pessoas e permissões.
+        </p>
+        <UAlert
+          v-if="inviteStatus"
+          class="mt-4"
+          color="neutral"
+          variant="subtle"
+          :description="inviteStatus"
         />
       </UCard>
 
@@ -702,6 +796,12 @@ onMounted(async () => {
             >
               Idade calculada: {{ calculateAge(familyForm.birthDate) }} anos.
             </p>
+            <UCheckbox
+              v-if="!familyForm.id"
+              v-model="familyForm.showInvitation"
+              label="Mostrar o link de convite depois de salvar"
+              description="Você poderá copiar ou compartilhar o link para a pessoa completar o próprio cadastro."
+            />
           </div>
           <template #footer>
             <div class="flex justify-end gap-2">
@@ -722,6 +822,47 @@ onMounted(async () => {
         </UCard>
       </template>
     </UModal>
+
+    <UModal
+      v-model:open="familyInviteOpen"
+      title="Convite para familiar"
+      description="Envie este link para a pessoa completar o cadastro dela na CEDA."
+    >
+      <template #body>
+        <UInput
+          :model-value="familyInvitationUrl"
+          readonly
+          aria-label="Link de convite para familiar"
+          class="w-full"
+        />
+        <p class="mt-3 text-sm text-muted">
+          O cadastro inicia como membro. Apenas um administrador pode conceder outros papéis.
+        </p>
+      </template>
+      <template #footer>
+        <div class="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-share-2"
+            label="Compartilhar"
+            class="justify-center"
+            @click="shareInvitation('family')"
+          />
+          <UButton
+            icon="i-lucide-copy"
+            label="Copiar link"
+            class="justify-center"
+            @click="copyInvitation('family')"
+          />
+        </div>
+      </template>
+    </UModal>
+
+    <InviteImageExport
+      v-model:open="inviteImageOpen"
+      :invite-url="generalInvitationUrl"
+    />
 
     <UModal v-model:open="familyDeleteOpen">
       <template #content>

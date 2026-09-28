@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { validateRegistration, type RegistrationErrors, type RegistrationInput } from '~/utils/registration'
 import { MIN_BIRTH_DATE, todayInTimeZone } from '~/utils/birthdays'
+import { invitationDescription, isRegistrationInvitation } from '~/utils/invitations'
 
 definePageMeta({ layout: 'public' })
 useSeoMeta({ title: 'Criar cadastro' })
 
 const auth = useAuthStore()
+const route = useRoute()
 const form = reactive<RegistrationInput>({
   fullName: '',
   email: '',
@@ -22,6 +24,8 @@ const pending = ref(false)
 const feedback = ref<{ color: 'success' | 'error' | 'warning', title: string, description: string } | null>(null)
 const passwordVisible = ref(false)
 const confirmationVisible = ref(false)
+const invitationSource = computed(() => route.query.origem === 'familia' ? 'family' : 'general')
+const hasInvitation = computed(() => isRegistrationInvitation(route.query))
 
 onMounted(() => auth.hydrate())
 
@@ -87,6 +91,14 @@ async function submit() {
           variant="subtle"
           :title="feedback.title"
           :description="feedback.description"
+        />
+        <UAlert
+          v-if="hasInvitation"
+          color="primary"
+          variant="subtle"
+          icon="i-lucide-heart-handshake"
+          title="Você recebeu um convite"
+          :description="invitationDescription(invitationSource)"
         />
 
         <UFormField
