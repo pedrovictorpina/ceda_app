@@ -21,6 +21,7 @@ const roleLabel = computed(() => {
   if (hasRole(auth.profile, 'pastor')) return 'Pastor'
   if (hasRole(auth.profile, 'cashier')) return 'Caixa'
   if (hasRole(auth.profile, 'counter')) return 'Balcão/Entrega'
+  if (hasRole(auth.profile, 'teacher')) return 'Professor(a)'
   return 'Membro'
 })
 const activeItems = computed(() => isAdminView.value ? visibleAdministratorItems.value : visibleMemberItems.value)
@@ -60,7 +61,7 @@ function toggleGroup(id: string) {
 }
 
 function isCurrentRoute(item: NavigationItem) {
-  return route.path === item.to || (!['/admin', '/operacao'].includes(item.to) && route.path.startsWith(`${item.to}/`))
+  return route.path === item.to || (!['/admin', '/operacao', '/sementinhas'].includes(item.to) && route.path.startsWith(`${item.to}/`))
 }
 
 function closeOnEscape(event: KeyboardEvent) {

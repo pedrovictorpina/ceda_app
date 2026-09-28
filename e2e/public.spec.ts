@@ -21,7 +21,7 @@ test('protected routes redirect signed-out visitors to login', async ({ page }) 
   const protectedRoutes = [
     '/inicio', '/palavra-do-dia', '/noticias', '/comunidade', '/oracao',
     '/eventos', '/feed', '/galeria', '/campanhas', '/social', '/notificacoes', '/celulas',
-    '/ovelhinhas', '/perfil', '/design-system', '/admin'
+    '/sementinhas', '/sementinhas/turmas', '/ovelhinhas', '/perfil', '/design-system', '/admin'
   ]
 
   for (const path of protectedRoutes) {

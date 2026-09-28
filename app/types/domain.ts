@@ -1,4 +1,6 @@
-export type SystemRole = 'member' | 'administrator' | 'pastor' | 'cashier' | 'counter'
+import type { CellLeaderProfile } from './cells'
+
+export type SystemRole = 'member' | 'administrator' | 'pastor' | 'cashier' | 'counter' | 'teacher'
 export type MinistryRole = 'leader' | 'member'
 export type CommunityVisibility = 'members' | 'private'
 export type EventKind = 'service' | 'event' | 'meeting' | 'rehearsal' | 'activity'
@@ -23,7 +25,7 @@ export interface NavigationItem {
   icon: string
   to: string
   group?: 'main' | 'community' | 'church' | 'more' | 'account' | 'administration' | 'operations'
-  requires?: SystemRole | 'guardian' | 'store_operator'
+  requires?: SystemRole | 'guardian' | 'store_operator' | 'children_staff'
   webOnly?: boolean
 }
 
@@ -41,6 +43,7 @@ export interface CellSummary {
 
 export interface CellAddress {
   addressLine: string
+  neighborhood?: string
   city: string
   region: string
   postalCode?: string
@@ -89,6 +92,8 @@ export interface CellPoll {
 
 export interface CellDetail extends CellSummary {
   address?: CellAddress
+  showFullAddress: boolean
+  leaders: CellLeaderProfile[]
   members: CellMember[]
   invitations: CellInvitation[]
   announcements: CellAnnouncement[]

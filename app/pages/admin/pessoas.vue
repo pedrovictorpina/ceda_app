@@ -54,6 +54,7 @@ const roleLabels: Record<SystemRole, string> = {
   pastor: 'Pastor',
   cashier: 'Caixa e estoque',
   counter: 'Balcão',
+  teacher: 'Professor(a) infantil',
   member: 'Membro'
 }
 
@@ -461,6 +462,15 @@ onMounted(loadPeople)
                   :loading="savingRole === `${member.id}:counter`"
                   :disabled="Boolean(savingRole) || member.id === auth.profile?.id"
                   @click="updateSystemRole(member, 'counter', !hasMemberRole(member.id, 'counter'))"
+                />
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  :variant="hasMemberRole(member.id, 'teacher') ? 'solid' : 'outline'"
+                  :label="hasMemberRole(member.id, 'teacher') ? 'Remover professor(a)' : 'Tornar professor(a)'"
+                  :loading="savingRole === `${member.id}:teacher`"
+                  :disabled="Boolean(savingRole) || member.id === auth.profile?.id"
+                  @click="updateSystemRole(member, 'teacher', !hasMemberRole(member.id, 'teacher'))"
                 />
               </div>
             </div>

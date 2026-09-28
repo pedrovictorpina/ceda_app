@@ -47,11 +47,11 @@ const shortcuts = [
     action: 'Gerenciar células'
   },
   {
-    title: 'Ovelhinhas',
-    description: 'Acesse a área protegida de crianças e responsáveis.',
-    icon: 'i-lucide-baby',
-    to: '/ovelhinhas',
-    action: 'Abrir área infantil'
+    title: 'Sementinhas',
+    description: 'Turmas infantis, check-in da salinha e alertas para os responsáveis.',
+    icon: 'i-lucide-sprout',
+    to: '/sementinhas/turmas',
+    action: 'Abrir turmas infantis'
   },
   {
     title: 'Pedidos de oração',

@@ -1,7 +1,7 @@
 import type { SystemRole } from '~/types/domain'
 import { useSupabaseAdmin, useSupabaseTokenVerifier } from '~~/server/utils/supabaseAdmin'
 
-const manageableRoles: SystemRole[] = ['administrator', 'pastor', 'cashier', 'counter']
+const manageableRoles: SystemRole[] = ['administrator', 'pastor', 'cashier', 'counter', 'teacher']
 const allRoles: SystemRole[] = ['member', ...manageableRoles]
 
 interface RoleChangePayload {

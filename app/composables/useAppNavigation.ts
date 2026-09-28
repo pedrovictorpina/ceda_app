@@ -1,5 +1,5 @@
 import type { NavigationItem } from '~/types/domain'
-import { canAccessChildren, canManageChurch, canOperateStore, hasRole } from '~/utils/authorization'
+import { canAccessChildren, canManageChurch, canOperateStore, canTeachChildren, hasRole } from '~/utils/authorization'
 
 export function useAppNavigation() {
   const auth = useAuthStore()
@@ -9,10 +9,13 @@ export function useAppNavigation() {
     { label: 'Notícias', icon: 'i-lucide-newspaper', to: '/noticias', group: 'main' },
     { label: 'Eventos', icon: 'i-lucide-calendar-days', to: '/eventos', group: 'main' },
     { label: 'Loja', icon: 'i-lucide-shopping-bag', to: '/loja', group: 'main' },
+    { label: 'Sementinhas', icon: 'i-lucide-sprout', to: '/sementinhas', group: 'main', requires: 'guardian' },
+    { label: 'Turmas infantis', icon: 'i-lucide-school', to: '/sementinhas/turmas', group: 'main', requires: 'children_staff' },
     { label: 'Comunidade', icon: 'i-lucide-users', to: '/comunidade', group: 'community' },
     { label: 'Células', icon: 'i-lucide-house-heart', to: '/celulas', group: 'community' },
     { label: 'Feed', icon: 'i-lucide-messages-square', to: '/feed', group: 'community' },
     { label: 'Motivos de oração', icon: 'i-lucide-heart', to: '/oracao', group: 'community' },
+    { label: 'Aniversariantes', icon: 'i-lucide-cake', to: '/aniversariantes', group: 'community' },
     { label: 'Horários de Culto', icon: 'i-lucide-clock-3', to: '/horarios-de-culto', group: 'church' },
     { label: 'Sobre Nós', icon: 'i-lucide-landmark', to: '/sobre', group: 'church' },
     { label: 'Fale Conosco', icon: 'i-lucide-mail', to: '/contato', group: 'church' },
@@ -21,7 +24,6 @@ export function useAppNavigation() {
     { label: 'Social', icon: 'i-lucide-square-play', to: '/social', group: 'more' },
     { label: 'Design System', icon: 'i-lucide-palette', to: '/design-system', group: 'more', webOnly: true },
     { label: 'Notificações', icon: 'i-lucide-bell', to: '/notificacoes', group: 'account' },
-    { label: 'Ovelhinhas', icon: 'i-lucide-heart-handshake', to: '/ovelhinhas', group: 'account', requires: 'guardian' },
     { label: 'Perfil', icon: 'i-lucide-user-round', to: '/perfil', group: 'account' },
     { label: 'Política de Privacidade', icon: 'i-lucide-file-lock-2', to: '/privacidade', group: 'account' },
     { label: 'Atendimento da loja', icon: 'i-lucide-package-check', to: '/operacao', group: 'operations', requires: 'store_operator' },
@@ -35,6 +37,7 @@ export function useAppNavigation() {
     { label: 'Conteúdo e avisos', icon: 'i-lucide-newspaper', to: '/admin/conteudo', group: 'administration', requires: 'administrator' },
     { label: 'Agenda e eventos', icon: 'i-lucide-calendar-days', to: '/admin/agenda', group: 'administration', requires: 'administrator' },
     { label: 'Auditoria', icon: 'i-lucide-shield-check', to: '/admin/auditoria', group: 'administration', requires: 'administrator' },
+    { label: 'Sementinhas', icon: 'i-lucide-sprout', to: '/sementinhas/turmas', group: 'administration', requires: 'children_staff' },
     { label: 'Caixa e pedidos', icon: 'i-lucide-package-check', to: '/operacao', group: 'operations', requires: 'administrator' },
     { label: 'Controle de estoque', icon: 'i-lucide-boxes', to: '/operacao/estoque', group: 'operations', requires: 'administrator' },
     { label: 'Relatórios', icon: 'i-lucide-chart-no-axes-combined', to: '/operacao/relatorios', group: 'operations', requires: 'administrator' }
@@ -42,6 +45,7 @@ export function useAppNavigation() {
 
   function canSeeItem(item: NavigationItem) {
     if (item.requires === 'guardian') return canAccessChildren(auth.profile)
+    if (item.requires === 'children_staff') return canTeachChildren(auth.profile)
     if (item.requires === 'administrator') return canManageChurch(auth.profile)
     if (item.requires === 'store_operator') return canOperateStore(auth.profile)
     if (item.requires === 'cashier') return canManageChurch(auth.profile) || hasRole(auth.profile, 'cashier')
