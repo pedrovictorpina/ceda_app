@@ -4,8 +4,8 @@ const { isLoading } = useLoadingIndicator()
 useHead({
   htmlAttrs: { lang: 'pt-BR' },
   link: [
-    { rel: 'icon', type: 'image/png', href: '/brand/ceda-logo.png' },
-    { rel: 'apple-touch-icon', type: 'image/png', href: '/brand/ceda-logo.png' }
+    { rel: 'icon', type: 'image/png', sizes: '192x192', href: '/icons/ceda-192.png' },
+    { rel: 'apple-touch-icon', type: 'image/png', sizes: '180x180', href: '/icons/ceda-apple-180.png' }
   ]
 })
 </script>

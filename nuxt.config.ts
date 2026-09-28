@@ -41,12 +41,17 @@ export default defineNuxtConfig({
     manifest: {
       name: 'CEDA',
       short_name: 'CEDA',
+      lang: 'pt-BR',
       description: 'Comunidade, agenda e cuidado da igreja.',
       theme_color: '#f97316',
       background_color: '#09090b',
       display: 'standalone',
       start_url: '/inicio',
-      icons: [{ src: '/brand/ceda-logo.png', sizes: '1254x1254', type: 'image/png', purpose: 'any' }]
+      icons: [
+        { src: '/icons/ceda-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: '/icons/ceda-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+        { src: '/icons/ceda-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+      ]
     },
     workbox: {
       navigateFallback: '/',
