@@ -18,15 +18,38 @@ export interface SessionProfile {
   roles: SystemRole[]
   isApprovedGuardian: boolean
   isChildrenTeam: boolean
+  /** Responsável por ao menos uma criança cadastrada em Sementinhas. */
+  hasChildren?: boolean
 }
 
 export interface NavigationItem {
   label: string
+  /** Rótulo curto para a barra inferior do celular. */
+  shortLabel?: string
   icon: string
   to: string
   group?: 'main' | 'community' | 'church' | 'more' | 'account' | 'administration' | 'operations'
-  requires?: SystemRole | 'guardian' | 'store_operator' | 'children_staff'
+  requires?: NavigationRequirement
   webOnly?: boolean
+  /** Outras rotas que também marcam este item como ativo (páginas agrupadas). */
+  matches?: string[]
+  /** Termos extras para a busca do menu. */
+  keywords?: string[]
+}
+
+export type NavigationRequirement = SystemRole | 'guardian' | 'store_operator' | 'children_staff'
+
+export interface NavigationTab {
+  label: string
+  icon: string
+  to: string
+  requires?: NavigationRequirement
+}
+
+export interface NavigationSection {
+  id: string
+  label: string
+  tabs: NavigationTab[]
 }
 
 export interface CellSummary {

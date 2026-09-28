@@ -144,11 +144,10 @@ onUnmounted(clearPhoto)
           hint="A idade é calculada automaticamente"
           :error="errors.birthDate"
         >
-          <UInput
+          <AppDatePicker
             v-model="form.birthDate"
-            class="w-full"
             size="xl"
-            type="date"
+            placeholder="Selecionar data de nascimento"
             :min="bounds.min"
             :max="bounds.max"
           />

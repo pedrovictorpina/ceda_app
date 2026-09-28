@@ -131,13 +131,11 @@ async function submit() {
             hint="Mostramos só o dia e o mês"
             :error="errors.birthDate"
           >
-            <UInput
+            <AppDatePicker
               v-model="form.birthDate"
-              type="date"
+              placeholder="Selecionar data de nascimento"
               :min="MIN_BIRTH_DATE"
               :max="today"
-              autocomplete="bday"
-              class="w-full"
             />
           </UFormField>
           <UCheckbox

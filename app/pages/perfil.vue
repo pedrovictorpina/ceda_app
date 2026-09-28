@@ -646,6 +646,13 @@ onMounted(async () => {
       </UCard>
     </div>
 
+    <p class="mt-8 text-center text-sm text-muted">
+      Saiba como cuidamos dos seus dados na
+      <NuxtLink
+        to="/privacidade"
+        class="focus-ring rounded font-medium text-primary underline-offset-4 hover:underline"
+      >Política de Privacidade</NuxtLink>.
+    </p>
     <UModal v-model:open="familyEditorOpen">
       <template #content>
         <UCard>

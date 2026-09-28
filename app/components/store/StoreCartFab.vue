@@ -9,7 +9,7 @@ const emit = defineEmits<{ open: [] }>()
   <Transition name="store-fab">
     <div
       v-if="count"
-      class="store-fab-position pointer-events-none fixed inset-x-0 z-30 flex justify-center px-4 md:justify-end md:px-8 xl:hidden"
+      class="hide-while-typing store-fab-position pointer-events-none fixed inset-x-0 z-30 flex justify-center px-4 md:justify-end md:px-8 xl:hidden"
     >
       <button
         type="button"

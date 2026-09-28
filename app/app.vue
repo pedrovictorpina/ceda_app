@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { pt_br } from '@nuxt/ui/locale'
+
 const { isLoading } = useLoadingIndicator()
 
 useHead({
@@ -11,7 +13,7 @@ useHead({
 </script>
 
 <template>
-  <UApp>
+  <UApp :locale="pt_br">
     <ClientOnly>
       <BrandLoadingScreen
         v-if="isLoading"

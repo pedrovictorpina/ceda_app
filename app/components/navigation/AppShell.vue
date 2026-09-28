@@ -1,18 +1,22 @@
 <script setup lang="ts">
-import { canManageChurch, hasRole } from '~/utils/authorization'
+import { canManageChurch, canOperateStore, canTeachChildren, hasRole } from '~/utils/authorization'
+import { bottomNavProfile, buildSearchIndex, findActiveItem, pickBottomNavItems, type SearchableEntry } from '~/utils/navigation'
 import type { NavigationItem } from '~/types/domain'
+import type { MenuGroup } from './AppMenuSheet.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
-const { visibleMemberItems, visibleAdministratorItems } = useAppNavigation()
+const { visibleMemberItems, visibleAdministratorItems, visibleSections } = useAppNavigation()
+const { recent, ensureLoaded, remember } = useRecentNavigation()
 const sidebarCollapsed = ref(false)
 const menuOpen = ref(false)
-const collapsedGroups = ref<Record<string, boolean>>({
-  community: true,
-  church: true,
-  more: true,
-  account: true
-})
+
+// Páginas de conta ficam no cabeçalho, mas continuam encontráveis pela busca do menu.
+const accountEntries: SearchableEntry[] = [
+  { label: 'Perfil', icon: 'i-lucide-user-round', to: '/perfil', keywords: ['conta', 'dados'] },
+  { label: 'Notificações', icon: 'i-lucide-bell', to: '/notificacoes', keywords: ['avisos', 'alertas'] },
+  { label: 'Política de Privacidade', icon: 'i-lucide-file-lock-2', to: '/privacidade', keywords: ['LGPD', 'dados'] }
+]
 
 const canUseAdminView = computed(() => canManageChurch(auth.profile))
 const isAdminView = computed(() => canUseAdminView.value && (route.path.startsWith('/admin') || route.path.startsWith('/operacao')))
@@ -25,47 +29,53 @@ const roleLabel = computed(() => {
   return 'Membro'
 })
 const activeItems = computed(() => isAdminView.value ? visibleAdministratorItems.value : visibleMemberItems.value)
-const mobilePrimary = computed(() => activeItems.value.filter(item => (
-  isAdminView.value
-    ? ['/admin', '/admin/agenda', '/operacao'].includes(item.to)
-    : ['/inicio', '/eventos', canUseAdminView.value || hasRole(auth.profile, 'cashier') || hasRole(auth.profile, 'counter') ? '/operacao' : '/notificacoes'].includes(item.to)
-)))
-const menuItems = computed(() => activeItems.value.filter(item => !item.webOnly || !menuOpen.value))
-const menuGroups = computed(() => {
-  const definitions: Array<{ id: NonNullable<NavigationItem['group']>, label: string, icon: string, collapsible: boolean }> = isAdminView.value
-    ? [
-        { id: 'main', label: 'Painel', icon: 'i-lucide-layout-dashboard', collapsible: false },
-        { id: 'administration', label: 'Gestão da igreja', icon: 'i-lucide-shield-check', collapsible: false },
-        { id: 'operations', label: 'Operação da loja', icon: 'i-lucide-package-check', collapsible: false }
-      ]
-    : [
-        { id: 'main', label: 'Principal', icon: 'i-lucide-house', collapsible: false },
-        { id: 'community', label: 'Comunidade', icon: 'i-lucide-users', collapsible: true },
-        { id: 'church', label: 'Igreja', icon: 'i-lucide-landmark', collapsible: true },
-        { id: 'more', label: 'Mais', icon: 'i-lucide-ellipsis', collapsible: true },
-        { id: 'account', label: 'Conta', icon: 'i-lucide-circle-user-round', collapsible: true },
-        { id: 'operations', label: 'Operação da loja', icon: 'i-lucide-package-check', collapsible: false }
-      ]
-  return definitions.map(group => ({
-    ...group,
-    items: menuItems.value.filter(item => item.group === group.id)
-  })).filter(group => group.items.length)
-})
+const activeItem = computed(() => findActiveItem(activeItems.value, route.path))
 
-function isGroupOpen(id: string, collapsible: boolean, items: NavigationItem[]) {
-  return !collapsible || !collapsedGroups.value[id] || items.some(item => route.path.startsWith(item.to))
+const bottomItems = computed(() => pickBottomNavItems(activeItems.value, bottomNavProfile({
+  isAdminView: isAdminView.value,
+  canOperateStore: canOperateStore(auth.profile),
+  caresForChildren: Boolean(auth.profile?.hasChildren) || canTeachChildren(auth.profile)
+})))
+
+const groupDefinitions = computed<Array<{ id: NonNullable<NavigationItem['group']>, label: string }>>(() => isAdminView.value
+  ? [
+      { id: 'main', label: 'Painel' },
+      { id: 'administration', label: 'Gestão da igreja' },
+      { id: 'operations', label: 'Operação' }
+    ]
+  : [
+      { id: 'main', label: 'Principal' },
+      { id: 'community', label: 'Comunidade' },
+      { id: 'church', label: 'Igreja' },
+      { id: 'operations', label: 'Operação' },
+      { id: 'more', label: 'Mais' }
+    ])
+
+function groupItems(items: NavigationItem[]): MenuGroup[] {
+  return groupDefinitions.value
+    .map(group => ({ ...group, items: items.filter(item => item.group === group.id) }))
+    .filter(group => group.items.length)
 }
 
-function toggleGroup(id: string) {
-  collapsedGroups.value[id] = !collapsedGroups.value[id]
-}
+const sidebarGroups = computed(() => groupItems(activeItems.value))
+// No celular, o menu não repete o que já está na barra inferior.
+const sheetGroups = computed(() => groupItems(activeItems.value.filter(item => !item.webOnly && !bottomItems.value.includes(item))))
+const searchIndex = computed(() => [
+  ...buildSearchIndex(activeItems.value.filter(item => !item.webOnly), visibleSections.value),
+  ...accountEntries
+])
+const recentEntries = computed(() => recent.value.flatMap((to) => {
+  const entry = searchIndex.value.find(candidate => candidate.to === to)
+  return entry ? [entry] : []
+}))
 
 function isCurrentRoute(item: NavigationItem) {
-  return route.path === item.to || (!['/admin', '/operacao', '/sementinhas'].includes(item.to) && route.path.startsWith(`${item.to}/`))
+  return item === activeItem.value
 }
 
-function closeOnEscape(event: KeyboardEvent) {
-  if (event.key === 'Escape') menuOpen.value = false
+async function openMenu() {
+  ensureLoaded()
+  menuOpen.value = true
 }
 
 async function signOut() {
@@ -78,13 +88,14 @@ async function changeView(view: 'member' | 'administrator') {
   if (view === 'administrator' && !canUseAdminView.value) return
   await navigateTo(view === 'administrator' ? '/admin' : '/inicio')
 }
+
+watch(() => route.path, (path) => {
+  if (searchIndex.value.some(entry => entry.to === path)) remember(path)
+}, { immediate: true })
 </script>
 
 <template>
-  <div
-    class="min-h-screen bg-default text-default"
-    @keydown="closeOnEscape"
-  >
+  <div class="min-h-screen bg-default text-default">
     <header class="fixed inset-x-0 top-0 z-40 flex h-16 items-center border-b border-default bg-default/95 px-4 backdrop-blur md:pl-5">
       <div class="flex min-w-0 flex-1 items-center gap-3">
         <UButton
@@ -97,14 +108,14 @@ async function changeView(view: 'member' | 'administrator') {
         />
         <BrandLogo to="/inicio" />
         <UBadge
-          class="inline-flex shrink-0"
+          class="hidden shrink-0 min-[400px]:inline-flex"
           color="neutral"
           variant="subtle"
         >
           {{ roleLabel }}
         </UBadge>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1 sm:gap-2">
         <div
           v-if="canUseAdminView"
           class="hidden items-center rounded-xl bg-elevated p-1 lg:flex"
@@ -135,12 +146,14 @@ async function changeView(view: 'member' | 'administrator') {
           :title="isAdminView ? 'Visão administrador' : 'Visão membro'"
           @click="changeView(isAdminView ? 'member' : 'administrator')"
         />
+        <NavigationAppNotificationsButton />
         <UColorModeButton />
         <UButton
           color="neutral"
           variant="ghost"
           icon="i-lucide-circle-user-round"
-          :aria-label="auth.profile?.name || 'Perfil'"
+          :aria-label="`Perfil de ${auth.profile?.name || 'membro'}`"
+          title="Perfil"
           to="/perfil"
         />
       </div>
@@ -150,38 +163,23 @@ async function changeView(view: 'member' | 'administrator') {
       class="fixed bottom-0 left-0 top-16 z-30 hidden flex-col border-r border-default bg-default pb-3 pl-1 pr-3 pt-3 transition-[width] md:flex"
       :class="sidebarCollapsed ? 'w-20' : 'w-68'"
     >
-      <nav
-        aria-label="Navegação principal"
-        class="sidebar-scroll-left flex-1 space-y-3 overflow-y-auto"
-      >
-        <section
-          v-for="group in menuGroups"
-          :key="group.id"
-          class="space-y-1"
+      <!-- Itens dependem do papel carregado no navegador: renderizar só no cliente evita hidratação com links trocados. -->
+      <ClientOnly>
+        <nav
+          aria-label="Navegação principal"
+          class="sidebar-scroll-left flex-1 space-y-3 overflow-y-auto"
         >
-          <button
-            v-if="!sidebarCollapsed && group.collapsible"
-            type="button"
-            class="focus-ring flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted hover:bg-elevated"
-            :aria-expanded="isGroupOpen(group.id, group.collapsible, group.items)"
-            @click="toggleGroup(group.id)"
-          >
-            <span>{{ group.label }}</span>
-            <UIcon
-              :name="isGroupOpen(group.id, group.collapsible, group.items) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
-              class="size-4"
-            />
-          </button>
-          <p
-            v-else-if="!sidebarCollapsed && !group.collapsible"
-            class="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted"
-          >
-            {{ group.label }}
-          </p>
-          <div
-            v-show="sidebarCollapsed || isGroupOpen(group.id, group.collapsible, group.items)"
+          <section
+            v-for="group in sidebarGroups"
+            :key="group.id"
             class="space-y-1"
           >
+            <p
+              v-if="!sidebarCollapsed"
+              class="px-3 py-1.5 text-xs font-semibold text-muted"
+            >
+              {{ group.label }}
+            </p>
             <NuxtLink
               v-for="item in group.items"
               :key="item.to"
@@ -189,6 +187,7 @@ async function changeView(view: 'member' | 'administrator') {
               class="focus-ring flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition hover:bg-elevated"
               :class="isCurrentRoute(item) ? 'bg-primary/10 text-primary' : 'text-muted'"
               :title="sidebarCollapsed ? item.label : undefined"
+              :aria-current="isCurrentRoute(item) ? 'page' : undefined"
             >
               <UIcon
                 :name="item.icon"
@@ -199,18 +198,20 @@ async function changeView(view: 'member' | 'administrator') {
                 class="truncate"
               >{{ item.label }}</span>
             </NuxtLink>
-          </div>
-        </section>
-      </nav>
+          </section>
+        </nav>
+        <template #fallback>
+          <div class="flex-1" />
+        </template>
+      </ClientOnly>
       <div class="mt-3 border-t border-default pt-3">
         <UButton
           color="neutral"
           variant="ghost"
           block
           icon="i-lucide-log-out"
-          :label="sidebarCollapsed ? undefined : 'Sair'
-          "
-          :aria-label="'Sair da conta'"
+          :label="sidebarCollapsed ? undefined : 'Sair'"
+          aria-label="Sair da conta"
           :title="sidebarCollapsed ? 'Sair' : undefined"
           @click="signOut"
         />
@@ -222,122 +223,38 @@ async function changeView(view: 'member' | 'administrator') {
       :class="sidebarCollapsed ? 'md:ml-20' : 'md:ml-68'"
     >
       <div class="mx-auto max-w-6xl">
+        <ClientOnly>
+          <NavigationAppSectionTabs />
+        </ClientOnly>
         <slot />
       </div>
     </main>
 
-    <nav
-      aria-label="Navegação móvel"
-      class="safe-bottom fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-default bg-default/95 px-2 pt-2 backdrop-blur md:hidden"
-    >
-      <NuxtLink
-        v-for="item in mobilePrimary"
-        :key="item.to"
-        :to="item.to"
-        class="focus-ring flex min-h-12 flex-col items-center justify-center rounded-lg text-xs"
-        :class="isCurrentRoute(item) ? 'text-primary' : 'text-muted'"
-      >
-        <UIcon
-          :name="item.icon"
-          class="size-5"
-        /><span>{{ item.label }}</span>
-      </NuxtLink>
-      <button
-        class="focus-ring flex min-h-12 flex-col items-center justify-center rounded-lg text-xs text-muted"
-        aria-controls="mobile-menu"
-        :aria-expanded="menuOpen"
-        @click="menuOpen = true"
-      >
-        <UIcon
-          name="i-lucide-menu"
-          class="size-5"
-        /><span>Menu</span>
-      </button>
-    </nav>
-
-    <div
-      v-if="menuOpen"
-      class="fixed inset-0 z-50 md:hidden"
-    >
-      <button
-        class="absolute inset-0 bg-black/60"
-        aria-label="Fechar menu"
-        @click="menuOpen = false"
+    <ClientOnly>
+      <NavigationAppBottomNav
+        :items="bottomItems"
+        :active-to="activeItem?.to"
+        :menu-open="menuOpen"
+        @open-menu="openMenu"
       />
-      <aside
-        id="mobile-menu"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Menu"
-        class="absolute inset-y-0 left-0 w-[min(86vw,20rem)] overflow-y-auto bg-default p-4 shadow-2xl"
-      >
-        <div class="mb-5 flex items-center justify-between">
-          <p class="font-semibold">
-            Menu
-          </p>
-          <UButton
-            color="neutral"
-            variant="ghost"
-            icon="i-lucide-x"
-            aria-label="Fechar menu"
-            @click="menuOpen = false"
-          />
-        </div>
-        <nav class="space-y-3">
-          <section
-            v-for="group in menuGroups"
-            :key="group.id"
-            class="space-y-1"
-          >
-            <button
-              v-if="group.collapsible"
-              type="button"
-              class="focus-ring flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted hover:bg-elevated"
-              :aria-expanded="isGroupOpen(group.id, group.collapsible, group.items)"
-              @click="toggleGroup(group.id)"
-            >
-              <span>{{ group.label }}</span>
-              <UIcon
-                :name="isGroupOpen(group.id, group.collapsible, group.items) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
-                class="size-4"
-              />
-            </button>
-            <p
-              v-else
-              class="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted"
-            >
-              {{ group.label }}
-            </p>
-            <div
-              v-show="isGroupOpen(group.id, group.collapsible, group.items)"
-              class="space-y-1"
-            >
-              <NuxtLink
-                v-for="item in group.items"
-                :key="item.to"
-                :to="item.to"
-                class="focus-ring flex items-center gap-3 rounded-lg px-3 py-3 text-sm"
-                @click="menuOpen = false"
-              >
-                <UIcon
-                  :name="item.icon"
-                  class="size-5"
-                />{{ item.label }}
-              </NuxtLink>
-            </div>
-          </section>
-        </nav>
-        <div class="mt-4 border-t border-default pt-4">
-          <UButton
-            color="neutral"
-            variant="outline"
-            block
-            icon="i-lucide-log-out"
-            label="Sair"
-            @click="signOut"
-          />
-        </div>
-      </aside>
-    </div>
+      <template #fallback>
+        <div
+          class="safe-bottom fixed inset-x-0 bottom-0 z-40 h-16 border-t border-default bg-default/95 md:hidden"
+          aria-hidden="true"
+        />
+      </template>
+    </ClientOnly>
+
+    <NavigationAppMenuSheet
+      v-model:open="menuOpen"
+      :groups="sheetGroups"
+      :search-index="searchIndex"
+      :recent="recentEntries"
+      :active-to="activeItem?.to"
+      :can-use-admin-view="canUseAdminView"
+      :is-admin-view="isAdminView"
+      @change-view="changeView(isAdminView ? 'member' : 'administrator')"
+      @sign-out="signOut"
+    />
   </div>
 </template>

@@ -4,6 +4,8 @@ export default defineNuxtConfig({
   app: {
     head: {
       titleTemplate: '%s · CEDA',
+      // O teclado virtual encolhe a página, então gavetas e barras fixas sobem junto.
+      viewport: 'width=device-width, initial-scale=1, interactive-widget=resizes-content',
       meta: [
         { name: 'theme-color', content: '#f97316' },
         { name: 'description', content: 'Comunidade, agenda e cuidado em um só lugar.' }

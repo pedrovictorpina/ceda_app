@@ -291,6 +291,7 @@ async function cancelEvent(event: ChurchEvent) {
 }
 
 onMounted(loadAgenda)
+useCreateFromQuery(openCreate)
 </script>
 
 <template>

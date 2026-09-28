@@ -129,11 +129,10 @@ async function send() {
             label="Data que prefere visitar (opcional)"
             :error="errors.preferredDate"
           >
-            <UInput
+            <AppDatePicker
               v-model="form.preferredDate"
-              type="date"
               size="xl"
-              class="w-full"
+              placeholder="Escolher data"
               :min="today"
               :max="maxDate"
             />

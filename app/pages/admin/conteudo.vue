@@ -252,6 +252,7 @@ async function saveContent() {
 }
 
 onMounted(loadContent)
+useCreateFromQuery(openCreate)
 </script>
 
 <template>
@@ -494,11 +495,7 @@ onMounted(loadContent)
             label="Data editorial"
             required
           >
-            <UInput
-              v-model="form.messageDate"
-              type="date"
-              class="w-full"
-            />
+            <AppDatePicker v-model="form.messageDate" />
           </UFormField>
           <UFormField
             v-if="form.status === 'scheduled'"

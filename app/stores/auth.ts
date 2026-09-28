@@ -63,6 +63,8 @@ export const useAuthStore = defineStore('auth', () => {
     }
     const { data: guardian } = await $supabase.from('guardian_access').select('status').eq('user_id', data.user.id).eq('status', 'approved').maybeSingle()
     const { data: team } = await $supabase.from('children_team_members').select('user_id').eq('user_id', data.user.id).maybeSingle()
+    // Só a existência do vínculo importa (define a barra inferior dos responsáveis).
+    const { count: childCount } = await $supabase.from('child_guardians').select('child_id', { count: 'exact', head: true }).eq('guardian_id', data.user.id)
     profile.value = {
       id: data.user.id,
       name: row?.full_name || data.user.email || 'Membro',
@@ -70,7 +72,8 @@ export const useAuthStore = defineStore('auth', () => {
       avatarUrl: row?.avatar_path || undefined,
       roles: roleRows?.length ? roleRows.map(item => item.role) : ['member'],
       isApprovedGuardian: Boolean(guardian),
-      isChildrenTeam: Boolean(team)
+      isChildrenTeam: Boolean(team),
+      hasChildren: Boolean(childCount)
     }
     loading.value = false
   }

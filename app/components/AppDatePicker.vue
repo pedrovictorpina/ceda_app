@@ -4,17 +4,22 @@ import { parseDate, type DateValue } from '@internationalized/date'
 const props = withDefaults(defineProps<{
   modelValue?: string
   placeholder?: string
+  min?: string
   max?: string
+  size?: 'md' | 'lg' | 'xl'
 }>(), {
   modelValue: '',
   placeholder: 'Selecionar data',
-  max: ''
+  min: '',
+  max: '',
+  size: 'md'
 })
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const open = ref(false)
 
 const selectedDate = computed<DateValue | undefined>(() => props.modelValue ? parseDate(props.modelValue) : undefined)
+const minimumDate = computed<DateValue | undefined>(() => props.min ? parseDate(props.min) : undefined)
 const maximumDate = computed<DateValue | undefined>(() => props.max ? parseDate(props.max) : undefined)
 const displayValue = computed(() => {
   if (!props.modelValue) return props.placeholder
@@ -36,6 +41,7 @@ function selectDate(value: unknown) {
       color="neutral"
       variant="outline"
       block
+      :size="size"
       class="justify-start"
       icon="i-lucide-calendar-days"
       :label="displayValue"
@@ -43,6 +49,7 @@ function selectDate(value: unknown) {
     <template #content>
       <UCalendar
         :model-value="selectedDate"
+        :min-value="minimumDate"
         :max-value="maximumDate"
         @update:model-value="selectDate"
       />

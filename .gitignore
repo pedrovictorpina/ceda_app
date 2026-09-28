@@ -26,3 +26,6 @@ logs
 .env
 .env.*
 !.env.example
+
+# Brag videos (generated)
+brag-output*/

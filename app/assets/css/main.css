@@ -28,6 +28,10 @@ html.dark {
 html { scroll-behavior: smooth; }
 body { min-height: 100vh; }
 .safe-bottom { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
+/* Libera espaço acima do teclado virtual enquanto o usuário digita. */
+@media (pointer: coarse) {
+  html[data-typing] .hide-while-typing { display: none; }
+}
 .focus-ring:focus-visible { outline: 3px solid #f97316; outline-offset: 3px; }
 
 /* Mantém o feedback de rolagem alinhado à identidade visual em todos os painéis. */
