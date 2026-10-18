@@ -1,0 +1,15 @@
+.git
+.vercel
+.env*
+node_modules
+.nuxt
+.nitro
+.cache
+.data
+.output
+output
+test-results
+playwright-report
+.playwright-cli
+logs
+*.log
