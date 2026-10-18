@@ -59,7 +59,7 @@ export default defineAppConfig({
     },
     navigationMenu: {
       slots: {
-        link: 'rounded-xl',
+        link: 'rounded-xl before:rounded-[inherit]',
         linkLabel: 'font-medium'
       }
     },
