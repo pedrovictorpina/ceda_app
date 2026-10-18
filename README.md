@@ -12,6 +12,8 @@ Fundação executável de um único produto Nuxt para o site público, área de 
 - Vite PWA e Capacitor 8
 - Docker Desktop para executar o Supabase local
 
+Os controles de todas as áreas seguem o [padrão Nuxt UI do projeto](docs/nuxt-ui.md), com tema centralizado e verificação pelo ESLint.
+
 ## Instalação local
 
 ```bash
@@ -80,6 +82,8 @@ A migration inicial está em `supabase/migrations/`. `supabase/config.toml` desl
 - O Perfil oferece um link fixo de convite para `https://ceda-app-beige.vercel.app/cadastro?convite=ceda`, uma variação para convite familiar e imagens horizontal ou vertical com QR Code. Convites apenas direcionam ao cadastro completo: não carregam papéis nem elevam permissões. Toda conta entra como `member`; outros papéis continuam exclusivos da alteração feita por administrador.
 - As funções auxiliares usadas nas policies são `SECURITY INVOKER`. Operações atômicas (caixa da loja, Sementinhas) usam RPCs `SECURITY DEFINER` com `search_path` vazio, verificação explícita do chamador e execução revogada de `anon`.
 - Middleware de rota melhora UX, mas não é fronteira de segurança. RLS é a proteção efetiva.
+- “Esqueci minha senha” envia um link pelo Supabase; `/redefinir-senha` troca explicitamente o código PKCE e confere a solicitação de recuperação antes de oferecer a nova senha. Uma sessão normal não desbloqueia esse formulário. Marcadores sem credenciais expiram em uma hora, são vinculados à pessoa após a troca e permitem recarregar a aba; são apagados depois da alteração ou da saída. Entrada, cadastro, confirmação de e-mail e recuperação preservam `next` somente para destinos internos conhecidos. O link deve ser aberto no mesmo navegador/dispositivo que iniciou o pedido (o verificador PKCE fica no armazenamento desse navegador).
+- Antes de homologar e-mail, autorize no Supabase Auth → URL Configuration as URLs do domínio oficial `/entrar**` e `/redefinir-senha**`, incluindo query strings. O `config.toml` já inclui os endereços locais das portas 3000 e 4318. Produção exige remetente/SMTP configurado e teste de recebimento; nenhuma alteração cloud é feita pelo código. Em desenvolvimento local, use a caixa de e-mail capturada pelo Supabase em vez de enviar a pessoas reais.
 - Células têm cadastro administrativo, líderes designados, endereço privado, membros, convites para usuários já cadastrados, comunicados e enquetes. Líderes gerenciam somente as próprias células; membros veem somente células das quais participam; convidados pendentes veem o convite, mas não o endereço.
 - Diretório de células (`/celulas`, aba “Encontrar célula”): todo membro autenticado vê as células ativas pela RPC `SECURITY DEFINER` `list_cell_directory`, com nome, dia/horário, bairro/cidade, líderes (foto, resumo, WhatsApp e Instagram) e o status do próprio pedido de visita. O endereço completo só aparece quando a liderança mantém `cells.show_full_address_to_members` ligado (padrão) ou para membros/líderes/administração; o endereço abre no Google Maps. O RLS de `cells`, `cell_addresses` e `cell_leaders` não foi afrouxado.
 - Líderes editam os dados da própria célula (`update_cell_details`), o próprio perfil de líder (`update_cell_leader_profile`; a administração edita qualquer líder), buscam pessoas cadastradas pelo nome (`search_members_for_cell`, mínimo 2 letras, até 20 resultados) e adicionam/removem membros (`add_cell_member`, `remove_cell_member`; líderes não removem outros líderes). Adições e remoções entram em `administrative_audit_log`.
@@ -145,13 +149,14 @@ O projeto não depende de CI. Codemagic pode futuramente executar o build/assina
 - Instagram (`https://www.instagram.com/igrejaceda/`) e YouTube (`https://www.youtube.com/@IgrejaCEDA`) têm links oficiais centralizados no runtime config, com override opcional por env. A futura sincronização de feed usa contratos separados.
 - Campanhas exibem meta e progresso informativos. Não há pagamento nem gateway.
 - Contatos oficiais exigem consentimento registrado; contatos pessoais de membros não são publicados por padrão.
+- Recepção pública: preencha somente os dados oficiais aprovados em `NUXT_PUBLIC_CHURCH_ADDRESS`, `NUXT_PUBLIC_CHURCH_PHONE`, `NUXT_PUBLIC_CHURCH_WHATSAPP` e `NUXT_PUBLIC_CHURCH_EMAIL`. Telefones devem incluir código do país e DDD. `NUXT_PUBLIC_CHURCH_MAP_URL` aceita um endereço HTTPS de mapa; sem essa URL, o botão pesquisa o endereço publicado no Google Maps. Contatos ausentes não geram botões vazios; a página explica a ausência e oferece o perfil oficial. Essa configuração não usa contatos pessoais de membros como substitutos.
 - Endereços oficiais ficam em `church_locations` e são reutilizados por eventos/cultos.
 - O provider de push é uma interface vazia nesta etapa. Lembretes persistem antecedência e cancelamento, separados de presença.
 - Os dados demonstrativos de Células existem apenas quando o app roda sem configuração Supabase e são identificados na interface. Quando há Supabase configurado, autenticação e RLS reais são obrigatórios.
 
 ## Pendências deliberadas
 
-Conteúdo real, recuperação de senha, CRUD completo, uploads, calendário mensal interativo, comentários em tempo real, push, integrações sociais por API, processamento administrativo de exclusão, texto jurídico e builds de loja são etapas futuras. A rota estável `/privacidade` contém um placeholder explicitamente não jurídico.
+Conteúdo oficial, comentários em tempo real, entrega de push, integrações sociais por API, processamento administrativo de exclusão, validação institucional do texto de privacidade e builds de loja ainda exigem configuração ou trabalho específico. Agenda mensal, publicações, grupos, salvos e interações já consultam e persistem registros reais. A rota `/privacidade` explica o comportamento atual e identifica os dados institucionais ainda pendentes de confirmação.
 
 ## Fontes técnicas verificadas na criação
 
