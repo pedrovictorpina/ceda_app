@@ -17,9 +17,10 @@ class MemoryStorage implements BrowserStorage {
 
 const user = (id: string) => ({ id, email: `${id}@example.test`, user_metadata: {} })
 type UserResult = { data: { user: ReturnType<typeof user> | null }, error: Error | null }
-function mockClient(userId = 'member-b', failingTable = '') {
+function mockClient(userId = 'member-b', failingTable = '', storageReady?: () => Promise<void>) {
   const auth = {
     getUser: vi.fn(async (): Promise<UserResult> => ({ data: { user: user(userId) }, error: null })),
+    signInWithPassword: vi.fn(async () => ({ error: null })),
     signOut: vi.fn(async () => ({ error: null as Error | null })),
     initialize: vi.fn(async () => ({ error: null })),
     exchangeCodeForSession: vi.fn(async () => ({ data: { user: user(userId), redirectType: 'PASSWORD_RECOVERY' as string | null }, error: null })),
@@ -44,7 +45,10 @@ function mockClient(userId = 'member-b', failingTable = '') {
     }
     return query
   })
-  vi.stubGlobal('useNuxtApp', () => ({ $supabase: { auth, from }, $authStorage: { rememberAccess: false } }))
+  vi.stubGlobal('useNuxtApp', () => ({
+    $supabase: { auth, from },
+    $authStorage: { rememberAccess: false, setRememberAccess: vi.fn(), ...(storageReady ? { ready: storageReady } : {}) }
+  }))
   return { auth, from, insert }
 }
 
@@ -58,6 +62,23 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('auth store identity and recovery', () => {
+  it('keeps loading while native storage restores the saved session before checking its user', async () => {
+    let restore!: () => void
+    const ready = new Promise<void>((resolve) => {
+      restore = resolve
+    })
+    const client = mockClient('member-b', '', () => ready)
+    const store = useAuthStore()
+    const checking = store.hydrate()
+    expect(store.loading).toBe(true)
+    expect(store.profile).toBeNull()
+    expect(client.auth.getUser).not.toHaveBeenCalled()
+    restore()
+    await checking
+    expect(store.loading).toBe(false)
+    expect(store.profile?.id).toBe('member-b')
+  })
+
   it('clears loading and stale profile instead of silently substituting member permissions on query failure', async () => {
     mockClient('member-b', 'user_system_roles')
     const store = useAuthStore()
@@ -73,7 +94,25 @@ describe('auth store identity and recovery', () => {
     expect(client.insert).not.toHaveBeenCalled()
   })
 
-  it('does not overwrite the new account when an older hydration finishes late', async () => {
+  it('shares an in-flight session check and keeps loading until the profile is ready', async () => {
+    const client = mockClient()
+    let finish!: (value: UserResult) => void
+    client.auth.getUser.mockImplementationOnce(() => new Promise((resolve) => {
+      finish = resolve
+    }))
+    const store = useAuthStore()
+    const first = store.hydrate()
+    const second = store.hydrate()
+    expect(store.loading).toBe(true)
+    expect(store.profile).toBeNull()
+    expect(client.auth.getUser).toHaveBeenCalledTimes(1)
+    finish({ data: { user: user('member-b') }, error: null })
+    await Promise.all([first, second])
+    expect(store.loading).toBe(false)
+    expect(store.profile?.id).toBe('member-b')
+  })
+
+  it('does not overwrite a signed-in account when an older hydration finishes late', async () => {
     const client = mockClient()
     let finishFirst!: (value: UserResult) => void
     client.auth.getUser.mockImplementationOnce(() => new Promise((resolve) => {
@@ -81,12 +120,20 @@ describe('auth store identity and recovery', () => {
     }))
     const store = useAuthStore()
     const first = store.hydrate()
-    await store.hydrate()
+    await store.signIn('member-b@example.test', 'fixture-password')
     expect(store.profile?.id).toBe('member-b')
     finishFirst({ data: { user: user('old-account') }, error: null })
     await first
     expect(store.profile?.id).toBe('member-b')
     expect(client.auth.getUser).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not finish sign-in without a verified profile', async () => {
+    const client = mockClient()
+    client.auth.getUser.mockResolvedValue({ data: { user: null }, error: null })
+    await expect(useAuthStore().signIn('member-b@example.test', 'fixture-password')).rejects.toThrow()
+    expect(useAuthStore().profile).toBeNull()
+    expect(useAuthStore().loading).toBe(false)
   })
 
   it('does not restore an in-flight profile after successful sign-out', async () => {

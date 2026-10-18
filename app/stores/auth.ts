@@ -2,15 +2,17 @@ import type { SessionProfile } from '~/types/domain'
 import type { User } from '@supabase/supabase-js'
 import type { RegistrationInput } from '~/utils/registration'
 import { birthdayProfileFields } from '../utils/birthdays'
-import { authFlowLink } from '../utils/authFlow'
+import { authErrorMessage, authFlowLink } from '../utils/authFlow'
 import { PasswordRecoveryGate } from '../utils/passwordRecovery'
 
 export const useAuthStore = defineStore('auth', () => {
   const profile = ref<SessionProfile | null>(null)
   const loading = ref(true)
   const configured = ref(false)
+  const sessionError = ref('')
   const rememberAccess = ref(false)
   let hydrationRevision = 0
+  let hydration: { revision: number, promise: Promise<void> } | undefined
 
   function invalidateProfile() {
     hydrationRevision += 1
@@ -48,9 +50,19 @@ export const useAuthStore = defineStore('auth', () => {
     return result.data
   }
 
-  async function hydrate() {
+  function hydrate(): Promise<void> {
+    if (hydration?.revision === hydrationRevision) return hydration.promise
     const revision = ++hydrationRevision
+    const promise = loadProfile(revision).finally(() => {
+      if (hydration?.revision === revision) hydration = undefined
+    })
+    hydration = { revision, promise }
+    return promise
+  }
+
+  async function loadProfile(revision: number) {
     loading.value = true
+    sessionError.value = ''
     const { $supabase, $authStorage } = useNuxtApp()
     configured.value = Boolean($supabase)
     try {
@@ -97,7 +109,10 @@ export const useAuthStore = defineStore('auth', () => {
         hasChildren: Boolean(childResult.count)
       }
     } catch (error) {
-      if (revision === hydrationRevision) profile.value = null
+      if (revision === hydrationRevision) {
+        profile.value = null
+        sessionError.value = authErrorMessage(error, 'session')
+      }
       throw error
     } finally {
       if (revision === hydrationRevision) loading.value = false
@@ -118,6 +133,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (error) throw error
     invalidateProfile()
     await hydrate()
+    if (!profile.value) throw new Error('Não foi possível confirmar sua sessão. Entre novamente para continuar.')
   }
 
   async function signUp(input: RegistrationInput, returnTo: unknown = '/inicio') {
@@ -224,7 +240,8 @@ export const useAuthStore = defineStore('auth', () => {
     new PasswordRecoveryGate(localStorage, sessionStorage).clear()
     profile.value = null
     loading.value = false
+    sessionError.value = ''
   }
 
-  return { profile, loading, configured, rememberAccess, hydrate, setRememberAccess, signIn, signUp, requestPasswordReset, resendConfirmation, preparePasswordReset, updatePassword, signOut }
+  return { profile, loading, configured, sessionError, rememberAccess, hydrate, setRememberAccess, signIn, signUp, requestPasswordReset, resendConfirmation, preparePasswordReset, updatePassword, signOut }
 })

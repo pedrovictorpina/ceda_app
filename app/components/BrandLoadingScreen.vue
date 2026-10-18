@@ -3,7 +3,7 @@ withDefaults(defineProps<{ label?: string }>(), { label: 'Preparando sua experi√
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[100] grid place-items-center bg-default/95 px-6 backdrop-blur-sm">
+  <div class="fixed inset-0 z-[100] grid place-items-center bg-default px-6">
     <BrandLoader
       size="lg"
       :label="label"

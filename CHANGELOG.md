@@ -1,5 +1,11 @@
 # Changelog
 
+## Não publicado
+
+- A sessão salva é verificada na entrada do site e do aplicativo, com uma tela de carregamento até o perfil e o destino estarem prontos, sem exigir navegação adicional.
+- Falhas de verificação mantêm as informações públicas acessíveis e oferecem uma nova tentativa; os fluxos de recuperação de senha continuam independentes.
+- O fundo de seleção, hover e foco dos menus acompanha o formato arredondado de cada botão.
+
 ## 0.2.1 — 2026-10-18
 
 - Corrigido o espaçamento do ícone no cartão do próximo culto: agora ele aparece em uma linha própria abaixo do selo, no celular e no desktop.

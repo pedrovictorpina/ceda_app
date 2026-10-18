@@ -14,11 +14,6 @@ const cooldown = ref(0)
 const destination = computed(() => safeAuthReturnTo(route.query.next))
 let timer: ReturnType<typeof setInterval> | undefined
 
-onMounted(async () => {
-  try {
-    await auth.hydrate()
-  } catch { /* Sending a recovery email does not require an existing session. */ }
-})
 onBeforeUnmount(() => clearInterval(timer))
 
 async function submit() {

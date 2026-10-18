@@ -30,14 +30,6 @@ const invitationSource = computed(() => route.query.origem === 'familia' ? 'fami
 const hasInvitation = computed(() => isRegistrationInvitation(route.query))
 const destination = computed(() => safeAuthReturnTo(route.query.next))
 
-onMounted(async () => {
-  try {
-    await auth.hydrate()
-  } catch (error) {
-    feedback.value = { color: 'warning', title: 'Não foi possível verificar seu acesso', description: authErrorMessage(error, 'session') }
-  }
-})
-
 async function submit() {
   if (pending.value) return
   errors.value = validateRegistration(form)

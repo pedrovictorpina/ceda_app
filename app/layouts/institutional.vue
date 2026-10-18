@@ -1,27 +1,11 @@
 <script setup lang="ts">
-import { authErrorMessage } from '~/utils/authFlow'
-
 const auth = useAuthStore()
-const accessError = ref('')
-
-async function verifyAccess() {
-  accessError.value = ''
-  try {
-    await auth.hydrate()
-  } catch (error) {
-    accessError.value = authErrorMessage(error, 'session')
-  }
-}
 
 const publicLinks = [
   { label: 'Sobre nós', to: '/sobre' },
   { label: 'Horários de culto', to: '/horarios-de-culto' },
   { label: 'Fale conosco', to: '/contato' }
 ]
-
-onMounted(async () => {
-  if (auth.loading) await verifyAccess()
-})
 </script>
 
 <template>
@@ -55,18 +39,6 @@ onMounted(async () => {
       </div>
     </header>
     <main>
-      <div
-        v-if="accessError"
-        class="mx-auto max-w-6xl px-4 pt-5"
-      >
-        <UAlert
-          color="warning"
-          variant="soft"
-          title="Você pode continuar consultando as informações públicas"
-          :description="accessError"
-          :actions="[{ label: 'Verificar novamente', onClick: verifyAccess }]"
-        />
-      </div>
       <slot />
     </main>
   </div>

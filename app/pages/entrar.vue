@@ -15,15 +15,9 @@ const canResendConfirmation = ref(false)
 const passwordVisible = ref(false)
 const destination = computed(() => safeAuthReturnTo(route.query.next))
 
-onMounted(async () => {
-  try {
-    await auth.hydrate()
-    form.rememberAccess = auth.rememberAccess
-    if (auth.profile) await navigateTo(destination.value, { replace: true })
-  } catch (error) {
-    errorMessage.value = authErrorMessage(error, 'session')
-  }
-})
+watch(() => auth.loading, (loading) => {
+  if (!loading) form.rememberAccess = auth.rememberAccess
+}, { immediate: true })
 
 async function submit() {
   errors.value = { email: validateAuthEmail(form.email), password: form.password ? undefined : 'Informe sua senha.' }
@@ -59,7 +53,7 @@ async function resendConfirmation() {
 <template>
   <section class="mx-auto flex min-h-[calc(100vh-4rem)] max-w-md items-center px-4 py-12">
     <BrandLoadingScreen
-      v-if="pending"
+      v-if="pending && !auth.loading"
       label="Entrando…"
     />
     <UCard class="w-full">
@@ -103,10 +97,10 @@ async function resendConfirmation() {
           :description="confirmationSent ? 'Se houver um cadastro pendente para esse e-mail, você receberá um novo link. Confira também o spam e abra o link neste navegador.' : 'Se o e-mail foi confirmado, entre com sua senha para continuar.'"
         />
         <UAlert
-          v-if="errorMessage"
+          v-if="errorMessage || auth.sessionError"
           color="error"
           variant="subtle"
-          :description="errorMessage"
+          :description="errorMessage || auth.sessionError"
         />
         <UFormField
           label="E-mail"

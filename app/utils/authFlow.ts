@@ -6,6 +6,10 @@ const memberRoutes = new Set([
   '/admin/agenda', '/admin/conteudo', '/admin/auditoria', '/operacao', '/operacao/estoque', '/operacao/relatorios'
 ])
 
+export function isPublicSessionRoute(route: { meta: { layout?: unknown } }) {
+  return route.meta.layout === 'public' || route.meta.layout === 'institutional'
+}
+
 /** Only application destinations are accepted; auth pages and external URLs never become redirects. */
 export function safeAuthReturnTo(value: unknown): string {
   if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return '/inicio'
