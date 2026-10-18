@@ -15,3 +15,9 @@ Sugestões para uma próxima etapa: permitir fixar até três favoritos pessoais
 ## Verificação
 
 Lint, typecheck, build e 295 testes unitários passaram. No Chrome com toque simulado, o menu compilado foi conferido em 320×568, 390×844, 412×915 e 667×375 px, nos temas claro e escuro e com os perfis membro, caixa e administrador. Foram verificados: cobertura da tela, três colunas, ausência de overflow horizontal, rolagem interna, busca com e sem resultados, recentes, foco ao limpar/fechar, Escape, navegação e troca de visão autorizada. A altura reduzida de 430 px simulou a área disponível com teclado. Os cenários usaram API simulada, não fizeram gravações de negócio e terminaram sem erros ou avisos de console. A revisão por outro agente não identificou bloqueios. O APK não foi homologado em aparelho físico nesta etapa.
+
+## Publicação
+
+Publicada em 18/10/2026 como **0.2.3**, tag `v0.2.3`, código `50303589a2705f36ce27263bda05e6ef683a8af3`. O deploy `dpl_EDxMmzo9rvy1mubdAtscSmM84m6b` ficou `READY`, e [ceda-app-beige.vercel.app](https://ceda-app-beige.vercel.app) foi conferido apontando para ele. Esta versão não exigiu migração de banco ou mudança nativa.
+
+No Chrome de produção, com a conta de teste administrativa, o menu ocupou exatamente o viewport em 390×844 e 320×568 px. Foram confirmados três atalhos por linha, ausência de overflow horizontal, rodapé acessível, busca por oração, foco após limpar e retorno ao botão Menu ao fechar. A conferência terminou sem erros ou avisos de console e sem transações operacionais de teste.
