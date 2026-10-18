@@ -1,12 +1,14 @@
 # Changelog
 
-## Não publicado
+## 0.2.2 — 2026-10-18
 
 - Caixa e balcão unificados em uma função, com acesso a pagamentos, entregas, estoque e relatórios; contas anteriores continuam compatíveis.
 - Endereço oficial da igreja atualizado nas páginas de visita e nos links de localização do mapa.
 - A sessão salva é verificada na entrada do site e do aplicativo, com uma tela de carregamento até o perfil e o destino estarem prontos, sem exigir navegação adicional.
 - Falhas de verificação mantêm as informações públicas acessíveis e oferecem uma nova tentativa; os fluxos de recuperação de senha continuam independentes.
 - O fundo de seleção, hover e foco dos menus acompanha o formato arredondado de cada botão.
+
+Validação: lint, typecheck e build aprovados; 295 testes unitários, 76 assertivas SQL em PostgreSQL isolado e conferência de pagamentos, entregas, estoque e relatórios para os dois perfis antigos em celular e desktop. A API administrativa pareada e a migração `20261018214842_unify_store_operator_role` devem ser publicadas na mesma janela.
 
 ## 0.2.1 — 2026-10-18
 
