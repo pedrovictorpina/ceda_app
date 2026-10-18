@@ -13,3 +13,8 @@ playwright-report
 .playwright-cli
 logs
 *.log
+/brag-output*/
+/android/
+/ios/
+/releases/
+/dist/
