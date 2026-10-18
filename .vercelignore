@@ -1,5 +1,6 @@
 .git
 .vercel
+.codex-remote-attachments
 .env*
 node_modules
 .nuxt

@@ -51,10 +51,12 @@ const highlights = [
           <UCard class="relative border-primary/20 bg-default/90 shadow-2xl shadow-primary/10">
             <div class="p-2 sm:p-4">
               <UBadge label="Próximo culto publicado" />
-              <UIcon
-                name="i-lucide-church"
-                class="mt-8 size-10 text-primary"
-              />
+              <div class="mt-8 flex">
+                <UIcon
+                  name="i-lucide-church"
+                  class="size-10 text-primary"
+                />
+              </div>
               <p
                 v-if="loading"
                 class="mt-5 text-muted"

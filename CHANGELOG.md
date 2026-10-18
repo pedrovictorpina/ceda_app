@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 — 2026-10-18
+
+- Corrigido o espaçamento do ícone no cartão do próximo culto: agora ele aparece em uma linha própria abaixo do selo, no celular e no desktop.
+
 ## 0.2.0 — 2026-10-18
 
 - Padronização da interface com Nuxt UI, contraste acessível, controles móveis maiores, busca de navegação e data digitável.
