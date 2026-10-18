@@ -12,6 +12,9 @@
 }
 
 :root {
+  /* Branco sobre laranja 700 mantém leitura AA nos botões do tema claro. */
+  --ui-primary: var(--color-orange-700);
+  --ui-primary-hover: var(--color-orange-800);
   --app-header-height: 4rem;
   --app-mobile-nav-height: 4.5rem;
   --app-sidebar-width: 17rem;
@@ -22,6 +25,8 @@
 }
 
 html.dark {
+  --ui-primary: var(--color-orange-400);
+  --ui-primary-hover: var(--color-orange-300);
   --app-scrollbar-track: #18181b;
 }
 

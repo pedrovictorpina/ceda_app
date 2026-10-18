@@ -11,45 +11,50 @@ export interface PublishedEditorialItem {
 }
 
 export function usePublishedEditorial() {
-  async function latest(type: EditorialContentType) {
+  const loading = ref(true)
+  const errorMessage = ref('')
+
+  async function read<T>(query: () => PromiseLike<{ data: unknown, error: unknown }>, fallback: T): Promise<T> {
+    loading.value = true
+    errorMessage.value = ''
+    try {
+      const { data, error } = await query()
+      if (error) throw error
+      return (data ?? fallback) as T
+    } catch {
+      errorMessage.value = 'Não foi possível carregar as publicações. Confira sua conexão e tente novamente.'
+      return fallback
+    } finally { loading.value = false }
+  }
+
+  function published(type: EditorialContentType) {
     const { $supabase } = useNuxtApp()
-    if (!$supabase) return null
-    const { data } = await $supabase
-      .from('daily_messages')
+    if (!$supabase) throw new Error('unavailable')
+    return $supabase.from('daily_messages')
       .select('id, title, content, content_type, slug, message_date, publish_at')
-      .eq('content_type', type)
-      .eq('status', 'published')
+      .eq('content_type', type).eq('status', 'published')
+      .not('slug', 'is', null)
+      .or(`publish_at.is.null,publish_at.lte.${new Date().toISOString()}`)
+  }
+
+  async function latest(type: EditorialContentType) {
+    return read<PublishedEditorialItem | null>(() => published(type)
       .order('message_date', { ascending: false })
       .limit(1)
-      .maybeSingle()
-    return data as PublishedEditorialItem | null
+      .maybeSingle(), null)
   }
 
   async function list(type: EditorialContentType) {
-    const { $supabase } = useNuxtApp()
-    if (!$supabase) return []
-    const { data } = await $supabase
-      .from('daily_messages')
-      .select('id, title, content, content_type, slug, message_date, publish_at')
-      .eq('content_type', type)
-      .eq('status', 'published')
+    return read<PublishedEditorialItem[]>(() => published(type)
       .order('message_date', { ascending: false })
-      .limit(100)
-    return (data || []) as PublishedEditorialItem[]
+      .limit(100), [])
   }
 
   async function bySlug(type: EditorialContentType, slug: string) {
-    const { $supabase } = useNuxtApp()
-    if (!$supabase) return null
-    const { data } = await $supabase
-      .from('daily_messages')
-      .select('id, title, content, content_type, slug, message_date, publish_at')
-      .eq('content_type', type)
-      .eq('status', 'published')
+    return read<PublishedEditorialItem | null>(() => published(type)
       .eq('slug', slug)
-      .maybeSingle()
-    return data as PublishedEditorialItem | null
+      .maybeSingle(), null)
   }
 
-  return { latest, list, bySlug }
+  return { latest, list, bySlug, loading, errorMessage }
 }

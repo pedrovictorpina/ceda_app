@@ -25,7 +25,11 @@ function alertLine(entry: RosterEntry) {
 </script>
 
 <template>
-  <section class="rounded-2xl border border-default bg-default">
+  <UCard
+    as="section"
+    :ui="{ root: 'ring-0', body: 'contents' }"
+    class="rounded-2xl border border-default bg-default"
+  >
     <header class="flex items-center justify-between gap-3 border-b border-default px-4 py-3">
       <div class="min-w-0">
         <h3 class="truncate font-bold text-highlighted">
@@ -112,5 +116,5 @@ function alertLine(entry: RosterEntry) {
     >
       Nenhuma criança na salinha agora.
     </p>
-  </section>
+  </UCard>
 </template>

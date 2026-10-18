@@ -20,7 +20,7 @@ defineProps<{ items: DashboardShortcut[] }>()
         v-for="item in items"
         :key="item.id"
       >
-        <NuxtLink
+        <ULink
           :to="item.to"
           class="focus-ring group flex h-full min-h-22 flex-col items-center justify-center gap-2 rounded-2xl border border-default bg-default px-2 py-3 text-center shadow-sm transition hover:border-primary/40 hover:bg-primary/5"
         >
@@ -31,7 +31,7 @@ defineProps<{ items: DashboardShortcut[] }>()
             />
           </span>
           <span class="text-xs font-medium leading-4 text-default sm:text-sm sm:leading-5">{{ item.label }}</span>
-        </NuxtLink>
+        </ULink>
       </li>
     </ul>
   </section>

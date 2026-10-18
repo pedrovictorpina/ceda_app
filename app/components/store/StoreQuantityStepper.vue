@@ -11,7 +11,9 @@ const buttonSize = computed(() => props.size === 'sm' ? 'size-10' : 'size-11')
     role="group"
     :aria-label="`Quantidade de ${name}`"
   >
-    <button
+    <UButton
+      color="primary"
+      variant="ghost"
       type="button"
       class="focus-ring grid shrink-0 place-items-center rounded-full transition active:scale-90 hover:bg-primary/15"
       :class="buttonSize"
@@ -22,14 +24,16 @@ const buttonSize = computed(() => props.size === 'sm' ? 'size-10' : 'size-11')
         :name="quantity === 1 ? 'i-lucide-trash-2' : 'i-lucide-minus'"
         class="size-4"
       />
-    </button>
+    </UButton>
     <span
       class="min-w-7 text-center text-base font-bold tabular-nums text-highlighted"
       aria-live="polite"
     >{{ quantity }}</span>
-    <button
+    <UButton
+      color="primary"
+      variant="solid"
       type="button"
-      class="focus-ring grid shrink-0 place-items-center rounded-full bg-primary text-white shadow-sm transition active:scale-90 disabled:cursor-not-allowed disabled:bg-primary/30 disabled:shadow-none"
+      class="focus-ring grid shrink-0 place-items-center rounded-full bg-primary text-inverted shadow-sm transition active:scale-90 disabled:cursor-not-allowed disabled:bg-primary/30 disabled:shadow-none"
       :class="buttonSize"
       :disabled="quantity >= max"
       :aria-label="`Aumentar ${name}`"
@@ -39,6 +43,6 @@ const buttonSize = computed(() => props.size === 'sm' ? 'size-10' : 'size-11')
         name="i-lucide-plus"
         class="size-4"
       />
-    </button>
+    </UButton>
   </div>
 </template>

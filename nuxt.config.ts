@@ -24,10 +24,14 @@ export default defineNuxtConfig({
       supabasePublishableKey: process.env.NUXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '',
       galleryUrl: process.env.NUXT_PUBLIC_GALLERY_URL || '',
       galleryProvider: process.env.NUXT_PUBLIC_GALLERY_PROVIDER || 'web',
-      churchWebsiteUrl: process.env.NUXT_PUBLIC_CHURCH_WEBSITE_URL || '',
+      churchWebsiteUrl: process.env.NUXT_PUBLIC_CHURCH_WEBSITE_URL || 'https://ceda-app-beige.vercel.app',
       instagramUrl: process.env.NUXT_PUBLIC_INSTAGRAM_URL || 'https://www.instagram.com/igrejaceda/',
       youtubeUrl: process.env.NUXT_PUBLIC_YOUTUBE_URL || 'https://www.youtube.com/@IgrejaCEDA',
-      churchAddress: process.env.NUXT_PUBLIC_CHURCH_ADDRESS || ''
+      churchAddress: process.env.NUXT_PUBLIC_CHURCH_ADDRESS || '',
+      churchPhone: process.env.NUXT_PUBLIC_CHURCH_PHONE || '',
+      churchWhatsapp: process.env.NUXT_PUBLIC_CHURCH_WHATSAPP || '',
+      churchEmail: process.env.NUXT_PUBLIC_CHURCH_EMAIL || '',
+      churchMapUrl: process.env.NUXT_PUBLIC_CHURCH_MAP_URL || ''
     }
   },
   compatibilityDate: '2026-06-30',

@@ -29,9 +29,10 @@ async function assign() {
         Somente administradores e pastores atribuem ou removem líderes.
       </p>
     </template>
-    <form
+    <UForm
+      :state="{ email }"
       class="flex gap-2"
-      @submit.prevent="assign"
+      @submit="assign"
     >
       <UInput
         v-model="email"
@@ -47,6 +48,6 @@ async function assign() {
         :disabled="cellStore.demoMode || !email.trim()"
         label="Atribuir"
       />
-    </form>
+    </UForm>
   </UCard>
 </template>

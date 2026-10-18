@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Haptics, ImpactStyle } from '@capacitor/haptics'
 import { cartCount as countCart, cartQuantityOf, cartTotal as sumCart, formatBRL, reconcileCart, setCartQuantity, type CartItem, type StoreProduct } from '~/utils/storeCart'
+import { readStoreCartDraft, restoreStoreCartDraft, saveStoreCartDraft, type CartDraft } from '~/utils/storeCartDraft'
 
 definePageMeta({ middleware: 'auth' })
 useSeoMeta({ title: 'Loja' })
@@ -21,6 +22,8 @@ const cashFlowAvailable = ref<boolean | null>(null)
 const orders = ref<Order[]>([])
 const cart = ref<CartItem[]>([])
 const note = ref('')
+let pendingDraft: CartDraft | null = null
+let draftReady = false
 const search = ref('')
 const cartOpen = ref(false)
 const loading = ref(true)
@@ -57,6 +60,7 @@ function productImageUrl(path?: string | null) {
 async function loadStore(silent = false) {
   const { $supabase } = useNuxtApp()
   if (!$supabase || !auth.profile) return
+  const ownerId = auth.profile.id
   if (!silent) loading.value = true
   if (cashFlowAvailable.value === null) {
     const { error } = await $supabase.rpc('sync_store_cash_day')
@@ -64,7 +68,7 @@ async function loadStore(silent = false) {
   } else if (cashFlowAvailable.value) await $supabase.rpc('sync_store_cash_day')
   const [productsResult, ordersResult, cashDayResult] = await Promise.all([
     $supabase.from('store_products').select('*').eq('active', true).gt('stock_available', 0).order('name'),
-    $supabase.from('store_orders').select('id, order_number, status, total_amount, created_at').eq('buyer_id', auth.profile.id).order('created_at', { ascending: false }).limit(20),
+    $supabase.from('store_orders').select('id, order_number, status, total_amount, created_at').eq('buyer_id', ownerId).order('created_at', { ascending: false }).limit(20),
     cashFlowAvailable.value
       ? $supabase.from('store_cash_days').select('id').eq('status', 'open').limit(1).maybeSingle()
       : Promise.resolve({ data: null, error: null })
@@ -74,9 +78,26 @@ async function loadStore(silent = false) {
     ? await $supabase.from('store_cash_day_products').select('product_id').eq('cash_day_id', cashDayResult.data.id)
     : null
   const selectedIds = new Set((selectionResult?.data || []).map(row => row.product_id))
+  if (auth.profile?.id !== ownerId) return
+  if (productsResult.error || ordersResult.error || cashDayResult.error || selectionResult?.error) {
+    feedback.value = 'Não foi possível atualizar a loja. Seu pedido foi mantido; verifique sua conexão e toque em Atualizar.'
+    loading.value = false
+    return
+  }
   products.value = ((productsResult.data || []) as StoreProduct[]).filter(product => !cashFlowAvailable.value || selectedIds.has(product.id))
   orders.value = (ordersResult.data || []) as Order[]
+  if (pendingDraft) {
+    cart.value = restoreStoreCartDraft(pendingDraft, products.value)
+    note.value = pendingDraft.note
+    const adjusted = countCart(cart.value) < pendingDraft.items.reduce((sum, item) => sum + item.quantity, 0)
+    toast.add({ title: adjusted ? 'Pedido recuperado e ajustado' : 'Seu pedido foi recuperado', description: adjusted ? 'Revise os itens: o estoque ou os produtos do dia mudaram.' : 'Confira os itens e os preços atuais antes de enviar.', color: adjusted ? 'warning' : 'neutral' })
+    pendingDraft = null
+  }
+  draftReady = true
   syncCartWithStock()
+  try {
+    saveStoreCartDraft(window.sessionStorage, ownerId, cart.value, note.value)
+  } catch { /* Armazenamento indisponível. */ }
   feedback.value = productsResult.error || ordersResult.error || cashDayResult.error || selectionResult?.error
     ? 'Não foi possível atualizar a loja. Verifique sua conexão e toque em Atualizar.'
     : ''
@@ -86,9 +107,12 @@ async function loadStore(silent = false) {
 function syncCartWithStock() {
   if (!cart.value.length) return
   const previousCount = cartItemsCount.value
+  const previousTotal = cartTotal.value
   cart.value = reconcileCart(cart.value, products.value)
   if (cartItemsCount.value < previousCount) {
     toast.add({ title: 'Pedido ajustado', description: 'Alguns itens esgotaram e foram retirados ou reduzidos no seu pedido.', color: 'warning', icon: 'i-lucide-package-minus' })
+  } else if (cartTotal.value !== previousTotal) {
+    toast.add({ title: 'Valores atualizados', description: 'O preço de um item mudou. Confira o total do pedido antes de enviar.', color: 'warning', icon: 'i-lucide-receipt' })
   }
 }
 
@@ -108,6 +132,7 @@ function changeQuantity(product: StoreProduct, quantity: number) {
 }
 
 function clearCart() {
+  const ownerId = auth.profile?.id
   const previousCart = cart.value
   const previousNote = note.value
   cart.value = []
@@ -117,6 +142,7 @@ function clearCart() {
     icon: 'i-lucide-trash-2',
     color: 'neutral',
     actions: [{ label: 'Desfazer', color: 'primary', variant: 'soft', onClick: () => {
+      if (auth.profile?.id !== ownerId) return
       cart.value = reconcileCart(previousCart, products.value)
       note.value = previousNote
     } }]
@@ -125,29 +151,47 @@ function clearCart() {
 
 async function placeOrder() {
   const { $supabase } = useNuxtApp()
-  if (!$supabase || !auth.profile || !cart.value.length) return
+  if (!$supabase || !auth.profile || !cart.value.length || placingOrder.value) return
+  const ownerId = auth.profile.id
+  const orderItems = cart.value.map(item => ({ ...item }))
   placingOrder.value = true
   orderError.value = ''
   const { data: order, error: createError } = await $supabase
     .from('store_orders')
-    .insert({ buyer_id: auth.profile.id, note: note.value.trim() || null })
+    .insert({ buyer_id: ownerId, note: note.value.trim() || null })
     .select('id, order_number')
     .single()
+  if (auth.profile?.id !== ownerId) {
+    placingOrder.value = false
+    return
+  }
   if (createError || !order) {
     orderError.value = 'Não foi possível criar seu pedido. Tente enviar novamente.'
     placingOrder.value = false
     return
   }
 
-  for (const item of cart.value) {
+  for (const item of orderItems) {
+    if (auth.profile?.id !== ownerId) {
+      placingOrder.value = false
+      return
+    }
     const { error } = await $supabase.from('store_order_items').insert({
       order_id: order.id,
       product_id: item.id,
       quantity: item.quantity,
       unit_price: 0
     })
+    if (auth.profile?.id !== ownerId) {
+      placingOrder.value = false
+      return
+    }
     if (error) {
       await $supabase.from('store_orders').update({ status: 'cancelled' }).eq('id', order.id)
+      if (auth.profile?.id !== ownerId) {
+        placingOrder.value = false
+        return
+      }
       orderError.value = error.message.includes('Estoque insuficiente')
         ? 'Um item esgotou enquanto você finalizava. Atualizamos seu pedido; revise e envie de novo.'
         : 'Não foi possível reservar todos os itens do pedido. Tente enviar novamente.'
@@ -157,6 +201,10 @@ async function placeOrder() {
     }
   }
 
+  if (auth.profile?.id !== ownerId) {
+    placingOrder.value = false
+    return
+  }
   cart.value = []
   note.value = ''
   cartOpen.value = false
@@ -169,7 +217,36 @@ watch(cartItemsCount, (count) => {
   if (!count) cartOpen.value = false
 })
 
+watch([cart, note], () => {
+  if (!draftReady || !auth.profile) return
+  try {
+    saveStoreCartDraft(window.sessionStorage, auth.profile.id, cart.value, note.value)
+  } catch { /* Armazenamento indisponível. */ }
+}, { deep: true, flush: 'sync' })
+
+function readDraft() {
+  try {
+    pendingDraft = auth.profile ? readStoreCartDraft(window.sessionStorage, auth.profile.id) : null
+  } catch {
+    pendingDraft = null
+  }
+}
+
+watch(() => auth.profile?.id, () => {
+  draftReady = false
+  cart.value = []
+  note.value = ''
+  products.value = []
+  orders.value = []
+  feedback.value = ''
+  orderError.value = ''
+  cartOpen.value = false
+  readDraft()
+  if (auth.profile) void loadStore()
+}, { flush: 'sync' })
+
 onMounted(() => {
+  readDraft()
   void loadStore()
   refreshTimer = setInterval(() => {
     if (document.visibilityState === 'visible' && !placingOrder.value && !loading.value) void loadStore(true)
@@ -338,6 +415,7 @@ onUnmounted(() => {
               v-model="note"
               class="w-full"
               :rows="2"
+              :maxlength="500"
               placeholder="Ex.: retirar após o culto"
             />
           </UFormField>
@@ -421,6 +499,7 @@ onUnmounted(() => {
             v-model="note"
             class="w-full"
             :rows="2"
+            :maxlength="500"
             placeholder="Ex.: retirar após o culto"
           />
         </UFormField>

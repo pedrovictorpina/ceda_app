@@ -33,11 +33,12 @@ function submit() {
     :ui="{ content: 'max-h-[92dvh]', body: 'overflow-y-auto', footer: 'safe-bottom border-t border-default' }"
   >
     <template #body>
-      <form
+      <UForm
         id="leader-profile-form"
+        :state="form"
         class="mx-auto w-full max-w-lg space-y-4"
         novalidate
-        @submit.prevent="submit"
+        @submit="submit"
       >
         <UFormField
           label="Resumo sobre você"
@@ -83,7 +84,7 @@ function submit() {
             placeholder="seu.usuario"
           />
         </UFormField>
-      </form>
+      </UForm>
     </template>
     <template #footer>
       <div class="mx-auto flex w-full max-w-lg gap-2">

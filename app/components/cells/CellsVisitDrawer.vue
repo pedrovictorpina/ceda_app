@@ -102,12 +102,13 @@ async function send() {
           />
         </div>
 
-        <form
+        <UForm
           v-else
           id="visit-form"
+          :state="form"
           class="space-y-4"
           novalidate
-          @submit.prevent="send"
+          @submit="send"
         >
           <p class="text-sm text-muted">
             A liderança recebe seu pedido no app e combina a visita com você. Não é preciso ser membro da igreja.
@@ -142,7 +143,7 @@ async function send() {
             label="Compartilhar meu telefone com a liderança"
             description="Os líderes poderão chamar você no WhatsApp com o telefone do seu perfil."
           />
-        </form>
+        </UForm>
       </div>
     </template>
     <template #footer>

@@ -9,7 +9,8 @@ const props = withDefaults(defineProps<{
 </script>
 
 <template>
-  <NuxtLink
+  <ULink
+    raw
     :to="props.to"
     class="focus-ring inline-flex items-center rounded-md"
     :class="props.variant === 'auth' ? 'flex-col gap-2 text-center' : 'gap-2'"
@@ -27,5 +28,5 @@ const props = withDefaults(defineProps<{
       class="font-semibold"
       :class="props.variant === 'auth' ? 'text-lg' : ''"
     >CEDA</span>
-  </NuxtLink>
+  </ULink>
 </template>

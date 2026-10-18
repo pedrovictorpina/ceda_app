@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { canManageChurch, canOperateStore, canTeachChildren, hasRole } from '~/utils/authorization'
-import { bottomNavProfile, buildSearchIndex, findActiveItem, pickBottomNavItems, type SearchableEntry } from '~/utils/navigation'
+import { bottomNavProfile, buildSearchIndex, findActiveItem, isAdministrationPath, pickBottomNavItems, searchNavigation, type SearchableEntry } from '~/utils/navigation'
 import type { NavigationItem } from '~/types/domain'
 import type { MenuGroup } from './AppMenuSheet.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
+const toast = useToast()
 const { visibleMemberItems, visibleAdministratorItems, visibleSections } = useAppNavigation()
 const { recent, ensureLoaded, remember } = useRecentNavigation()
 const sidebarCollapsed = ref(false)
 const menuOpen = ref(false)
+const signingOut = ref(false)
+const desktopSearch = ref('')
 
 // Páginas de conta ficam no cabeçalho, mas continuam encontráveis pela busca do menu.
 const accountEntries: SearchableEntry[] = [
@@ -19,7 +22,7 @@ const accountEntries: SearchableEntry[] = [
 ]
 
 const canUseAdminView = computed(() => canManageChurch(auth.profile))
-const isAdminView = computed(() => canUseAdminView.value && (route.path.startsWith('/admin') || route.path.startsWith('/operacao')))
+const isAdminView = computed(() => canUseAdminView.value && isAdministrationPath(route.path))
 const roleLabel = computed(() => {
   if (hasRole(auth.profile, 'administrator')) return 'Administrador'
   if (hasRole(auth.profile, 'pastor')) return 'Pastor'
@@ -68,10 +71,12 @@ const recentEntries = computed(() => recent.value.flatMap((to) => {
   const entry = searchIndex.value.find(candidate => candidate.to === to)
   return entry ? [entry] : []
 }))
+const desktopResults = computed(() => searchNavigation(searchIndex.value, desktopSearch.value))
 
-function isCurrentRoute(item: NavigationItem) {
-  return item === activeItem.value
-}
+const sidebarMenu = computed(() => sidebarGroups.value.map(group => [
+  { type: 'label' as const, label: group.label },
+  ...group.items.map(item => ({ ...item, 'active': item === activeItem.value, 'aria-label': item.label }))
+]))
 
 async function openMenu() {
   ensureLoaded()
@@ -79,8 +84,17 @@ async function openMenu() {
 }
 
 async function signOut() {
+  if (signingOut.value) return
+  signingOut.value = true
+  try {
+    await auth.signOut()
+  } catch {
+    toast.add({ title: 'Não foi possível sair', description: 'Sua conta continua conectada. Verifique a conexão e tente sair novamente.', color: 'error', icon: 'i-lucide-wifi-off' })
+    return
+  } finally {
+    signingOut.value = false
+  }
   menuOpen.value = false
-  await auth.signOut()
   await navigateTo('/entrar')
 }
 
@@ -90,12 +104,17 @@ async function changeView(view: 'member' | 'administrator') {
 }
 
 watch(() => route.path, (path) => {
+  desktopSearch.value = ''
   if (searchIndex.value.some(entry => entry.to === path)) remember(path)
 }, { immediate: true })
 </script>
 
 <template>
   <div class="min-h-screen bg-default text-default">
+    <ULink
+      to="#conteudo-principal"
+      class="fixed left-4 top-2 z-50 -translate-y-20 rounded-xl bg-default p-3 font-semibold focus:translate-y-0 focus-visible:outline-2 focus-visible:outline-primary"
+    >Pular para o conteúdo</ULink>
     <header class="fixed inset-x-0 top-0 z-40 flex h-16 items-center border-b border-default bg-default/95 px-4 backdrop-blur md:pl-5">
       <div class="flex min-w-0 flex-1 items-center gap-3">
         <UButton
@@ -165,41 +184,63 @@ watch(() => route.path, (path) => {
     >
       <!-- Itens dependem do papel carregado no navegador: renderizar só no cliente evita hidratação com links trocados. -->
       <ClientOnly>
+        <UButton
+          v-if="sidebarCollapsed"
+          class="mb-3"
+          color="neutral"
+          variant="ghost"
+          icon="i-lucide-search"
+          aria-label="Expandir barra e buscar no menu"
+          @click="sidebarCollapsed = false"
+        />
+        <UInput
+          v-else
+          v-model="desktopSearch"
+          class="mb-3 w-full"
+          icon="i-lucide-search"
+          placeholder="Buscar no menu"
+          aria-label="Buscar páginas e tarefas no menu"
+        />
         <nav
-          aria-label="Navegação principal"
-          class="sidebar-scroll-left flex-1 space-y-3 overflow-y-auto"
+          v-if="desktopSearch.trim()"
+          aria-label="Resultados da busca no menu"
+          class="sidebar-scroll-left flex-1 overflow-y-auto"
         >
-          <section
-            v-for="group in sidebarGroups"
-            :key="group.id"
-            class="space-y-1"
+          <p
+            class="sr-only"
+            role="status"
           >
-            <p
-              v-if="!sidebarCollapsed"
-              class="px-3 py-1.5 text-xs font-semibold text-muted"
-            >
-              {{ group.label }}
-            </p>
-            <NuxtLink
-              v-for="item in group.items"
-              :key="item.to"
-              :to="item.to"
-              class="focus-ring flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition hover:bg-elevated"
-              :class="isCurrentRoute(item) ? 'bg-primary/10 text-primary' : 'text-muted'"
-              :title="sidebarCollapsed ? item.label : undefined"
-              :aria-current="isCurrentRoute(item) ? 'page' : undefined"
-            >
-              <UIcon
-                :name="item.icon"
-                class="size-5 shrink-0"
-              />
-              <span
-                v-if="!sidebarCollapsed"
-                class="truncate"
-              >{{ item.label }}</span>
-            </NuxtLink>
-          </section>
+            {{ desktopResults.length }} resultados encontrados
+          </p>
+          <ULink
+            v-for="entry in desktopResults"
+            :key="entry.to"
+            :to="entry.to"
+            class="focus-ring flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm hover:bg-elevated"
+          >
+            <UIcon
+              :name="entry.icon"
+              class="size-5 shrink-0 text-primary"
+            />
+            <span>{{ entry.label }}</span>
+          </ULink>
+          <p
+            v-if="!desktopResults.length"
+            class="p-3 text-sm text-muted"
+          >
+            Nenhuma página encontrada. Tente outra palavra.
+          </p>
         </nav>
+        <UNavigationMenu
+          v-else
+          :items="sidebarMenu"
+          orientation="vertical"
+          :collapsed="sidebarCollapsed"
+          tooltip
+          aria-label="Navegação principal"
+          class="sidebar-scroll-left flex-1 overflow-y-auto"
+          :ui="{ link: 'min-h-11', linkLeadingIcon: 'size-5' }"
+        />
         <template #fallback>
           <div class="flex-1" />
         </template>
@@ -212,6 +253,7 @@ watch(() => route.path, (path) => {
           icon="i-lucide-log-out"
           :label="sidebarCollapsed ? undefined : 'Sair'"
           aria-label="Sair da conta"
+          :loading="signingOut"
           :title="sidebarCollapsed ? 'Sair' : undefined"
           @click="signOut"
         />
@@ -219,6 +261,8 @@ watch(() => route.path, (path) => {
     </aside>
 
     <main
+      id="conteudo-principal"
+      tabindex="-1"
       class="min-h-screen px-4 pb-24 pt-20 transition-[margin] md:px-8 md:pb-8"
       :class="sidebarCollapsed ? 'md:ml-20' : 'md:ml-68'"
     >

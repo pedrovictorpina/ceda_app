@@ -20,7 +20,9 @@ const isBirthdayToday = computed(() => birthday.value.endsWith('hoje!'))
 </script>
 
 <template>
-  <article
+  <UCard
+    as="article"
+    :ui="{ root: 'ring-0', body: 'contents' }"
     class="flex flex-col rounded-2xl border bg-default p-4 shadow-sm transition-colors"
     :class="checkedIn ? 'border-success/50 bg-success/[0.04]' : 'border-default'"
   >
@@ -32,7 +34,7 @@ const isBirthdayToday = computed(() => birthday.value.endsWith('hoje!'))
       />
       <div class="min-w-0 flex-1">
         <div class="flex items-start justify-between gap-2">
-          <h3 class="line-clamp-2 text-lg font-bold leading-snug text-highlighted">
+          <h3 class="min-w-0 break-words line-clamp-2 text-lg font-bold leading-snug text-highlighted">
             {{ child.full_name }}
           </h3>
           <UButton
@@ -118,5 +120,5 @@ const isBirthdayToday = computed(() => birthday.value.endsWith('hoje!'))
         @click="emit('checkIn')"
       />
     </div>
-  </article>
+  </UCard>
 </template>

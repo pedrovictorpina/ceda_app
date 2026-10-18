@@ -1,130 +1,143 @@
 <script setup lang="ts">
-import { campaignCards } from '~/data/contentCatalog'
+import { formatEditorialDate } from '~/utils/churchAgenda'
 
 definePageMeta({ middleware: 'auth' })
 useSeoMeta({ title: 'Campanhas' })
-
-const selectedCampaign = ref<(typeof campaignCards)[number] | null>(null)
-const campaignOpen = computed({
-  get: () => Boolean(selectedCampaign.value),
-  set: (value: boolean) => {
-    if (!value) selectedCampaign.value = null
-  }
-})
+interface Campaign { id: string, title: string, description: string, external_url: string | null, goal_amount: number | null, raised_amount: number, updated_at: string }
+const campaigns = ref<Campaign[]>([])
+const loading = ref(true)
+const errorMessage = ref('')
+const currency = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
+const progress = (campaign: Campaign) => campaign.goal_amount ? Math.min(100, Math.round(Number(campaign.raised_amount) / Number(campaign.goal_amount) * 100)) : null
+function officialUrl(value: string | null) {
+  try {
+    const url = new URL(value || '')
+    return url.protocol === 'https:' ? url.href : undefined
+  } catch { return undefined }
+}
+async function load() {
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    const { $supabase } = useNuxtApp()
+    if (!$supabase) throw new Error('unavailable')
+    const { data, error } = await $supabase.from('campaigns').select('id, title, description, external_url, goal_amount, raised_amount, updated_at').eq('published', true).order('updated_at', { ascending: false }).limit(100)
+    if (error) throw error
+    campaigns.value = (data || []) as Campaign[]
+  } catch {
+    errorMessage.value = 'Não foi possível consultar as campanhas. Confira a conexão e tente novamente.'
+  } finally { loading.value = false }
+}
+onMounted(load)
 </script>
 
 <template>
   <div>
     <PageIntro
       title="Campanhas"
-      description="Acompanhe iniciativas de cuidado, necessidades atuais e o progresso de cada mobilização."
+      description="Iniciativas e necessidades publicadas pela equipe da CEDA."
       icon="i-lucide-hand-coins"
     />
-
-    <div class="mb-6 flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
-      <UIcon
-        name="i-lucide-shield-check"
-        class="mt-0.5 size-5 shrink-0 text-primary"
-      />
-      <p class="text-sm leading-6 text-muted">
-        As campanhas nesta área são informativas. Contribuições e entregas são combinadas somente pelos canais oficiais da CEDA.
-      </p>
-    </div>
-
-    <div class="grid gap-5 lg:grid-cols-2">
+    <UAlert
+      class="mb-6"
+      color="neutral"
+      variant="soft"
+      icon="i-lucide-info"
+      title="Como participar"
+      description="Confirme itens, prazos e local de entrega com a equipe. Os valores, quando informados, correspondem à última atualização publicada. Este aplicativo não recebe pagamentos."
+    />
+    <p
+      v-if="loading"
+      class="py-12 text-center text-muted"
+      role="status"
+    >
+      Carregando as campanhas…
+    </p>
+    <UAlert
+      v-else-if="errorMessage"
+      color="error"
+      variant="soft"
+      title="Campanhas indisponíveis"
+      :description="errorMessage"
+      :actions="[{ label: 'Tentar novamente', onClick: load }]"
+    />
+    <div
+      v-else-if="campaigns.length"
+      class="grid gap-5 lg:grid-cols-2"
+    >
       <UCard
-        v-for="campaign in campaignCards"
-        :key="campaign.title"
-        class="overflow-hidden"
+        v-for="campaign in campaigns"
+        :key="campaign.id"
       >
-        <div class="flex items-start gap-4">
-          <div class="grid size-13 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
-            <UIcon
-              :name="campaign.icon"
-              class="size-7"
-            />
+        <UBadge
+          color="neutral"
+          variant="subtle"
+          label="Iniciativa publicada"
+        />
+        <h2 class="mt-4 text-xl font-bold">
+          {{ campaign.title }}
+        </h2>
+        <p class="mt-3 whitespace-pre-line text-sm leading-6 text-muted">
+          {{ campaign.description }}
+        </p>
+        <div
+          v-if="campaign.goal_amount"
+          class="mt-6"
+        >
+          <div class="mb-2 flex flex-wrap justify-between gap-2 text-sm">
+            <span class="font-medium">{{ currency(campaign.raised_amount) }} informados</span><span class="text-muted">Meta: {{ currency(campaign.goal_amount) }}</span>
           </div>
-          <div>
-            <UBadge
-              color="neutral"
-              variant="subtle"
-              label="Campanha ativa"
-            />
-            <h2 class="mt-3 text-xl font-bold">
-              {{ campaign.title }}
-            </h2>
-            <p class="mt-2 min-h-18 text-sm leading-6 text-muted">
-              {{ campaign.description }}
-            </p>
-          </div>
-        </div>
-        <div class="mt-6">
-          <div class="mb-2 flex justify-between gap-4 text-sm">
-            <span class="font-medium">{{ campaign.raised }}</span>
-            <span class="text-muted">{{ campaign.goal }}</span>
-          </div>
-          <UProgress :model-value="campaign.progress" />
-          <p class="mt-2 text-right text-xs font-semibold text-primary">
-            {{ campaign.progress }}% do objetivo
+          <UProgress
+            :model-value="progress(campaign) ?? 0"
+            :aria-label="`Progresso da campanha ${campaign.title}`"
+          />
+          <p class="mt-2 text-sm text-muted">
+            {{ progress(campaign) }}% da meta · Atualizado em {{ formatEditorialDate(campaign.updated_at) }}
           </p>
         </div>
+        <p
+          v-else
+          class="mt-5 text-xs text-muted"
+        >
+          Atualizado em {{ formatEditorialDate(campaign.updated_at) }} · Sem meta financeira publicada.
+        </p>
         <template #footer>
-          <UButton
-            variant="soft"
-            :label="campaign.action"
-            trailing-icon="i-lucide-arrow-right"
-            @click="selectedCampaign = campaign"
-          />
+          <div class="flex flex-wrap gap-3">
+            <UButton
+              v-if="officialUrl(campaign.external_url)"
+              :to="officialUrl(campaign.external_url)"
+              target="_blank"
+              rel="noopener noreferrer"
+              variant="soft"
+              label="Ver orientações da campanha"
+              trailing-icon="i-lucide-external-link"
+            />
+            <UButton
+              to="/contato"
+              color="neutral"
+              variant="outline"
+              label="Falar com a equipe"
+            />
+          </div>
         </template>
       </UCard>
     </div>
-
-    <section class="mt-10 rounded-2xl bg-elevated p-6 sm:p-8">
-      <div class="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
-        <div>
-          <h2 class="text-xl font-semibold">
-            Quer ajudar de outra forma?
-          </h2><p class="mt-2 max-w-2xl text-sm leading-6 text-muted">
-            Tempo, conhecimento e disponibilidade também fazem diferença. Conheça as frentes de serviço da comunidade.
-          </p>
-        </div>
-        <UButton
-          to="/comunidade"
-          color="neutral"
-          variant="outline"
-          label="Encontrar uma frente"
-        />
-      </div>
-    </section>
-
-    <UModal
-      v-model:open="campaignOpen"
-      :title="selectedCampaign?.title"
-      description="Orientações da campanha"
+    <UCard
+      v-else
+      class="py-10 text-center"
     >
-      <template #body>
-        <div
-          v-if="selectedCampaign"
-          class="space-y-4"
-        >
-          <p class="leading-7 text-muted">
-            {{ selectedCampaign.description }}
-          </p>
-          <div class="rounded-xl bg-elevated p-4">
-            <p class="font-medium">
-              Como participar com segurança
-            </p>
-            <p class="mt-2 text-sm leading-6 text-muted">
-              Confirme os itens prioritários, prazos e local de entrega diretamente com a equipe responsável. Este aplicativo não solicita pagamento nem dados bancários.
-            </p>
-          </div>
-          <UButton
-            to="/contato"
-            label="Falar com a equipe"
-            trailing-icon="i-lucide-arrow-right"
-          />
-        </div>
-      </template>
-    </UModal>
+      <UIcon
+        name="i-lucide-heart-handshake"
+        class="size-10 text-muted"
+      /><h2 class="mt-4 text-xl font-semibold">
+        Ainda não há campanhas publicadas
+      </h2><p class="mt-2 text-muted">
+        A equipe pode orientar você sobre outras formas de ajudar.
+      </p><UButton
+        class="mt-5"
+        to="/contato"
+        label="Quero ajudar"
+      />
+    </UCard>
   </div>
 </template>

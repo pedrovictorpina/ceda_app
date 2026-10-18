@@ -21,13 +21,15 @@ const urgentItems = computed(() => props.items.filter(item => item.tone === 'war
 </script>
 
 <template>
-  <section
+  <UCard
     id="atencao"
+    as="section"
+    :ui="{ root: 'ring-0', body: 'contents' }"
     class="scroll-mt-24 rounded-2xl border border-default bg-default shadow-sm"
     aria-labelledby="dashboard-attention-title"
   >
     <header class="flex items-center gap-3 border-b border-default px-4 py-3.5 sm:px-5">
-      <div class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-white">
+      <div class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-inverted">
         <UIcon
           name="i-lucide-bell-ring"
           class="size-5"
@@ -84,7 +86,7 @@ const urgentItems = computed(() => props.items.filter(item => item.tone === 'war
         v-for="item in items"
         :key="item.id"
       >
-        <NuxtLink
+        <ULink
           :to="item.to"
           class="focus-ring group flex min-h-16 items-center gap-3 px-4 py-3 transition hover:bg-primary/5 sm:px-5"
         >
@@ -105,7 +107,7 @@ const urgentItems = computed(() => props.items.filter(item => item.tone === 'war
             name="i-lucide-chevron-right"
             class="size-5 shrink-0 text-dimmed transition group-hover:translate-x-0.5 group-hover:text-primary"
           />
-        </NuxtLink>
+        </ULink>
       </li>
     </ul>
 
@@ -149,5 +151,5 @@ const urgentItems = computed(() => props.items.filter(item => item.tone === 'war
         {{ listPreview(unavailable, unavailable.length) }}: disponível após a atualização do banco.
       </p>
     </footer>
-  </section>
+  </UCard>
 </template>

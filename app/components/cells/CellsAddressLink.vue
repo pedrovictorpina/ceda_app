@@ -9,9 +9,10 @@ const area = computed(() => cellAreaLabel(props.address))
 
 <template>
   <div v-if="address.addressLine || area">
-    <a
+    <ULink
       v-if="mapsUrl"
-      :href="mapsUrl"
+      :to="mapsUrl"
+      external
       target="_blank"
       rel="noopener noreferrer"
       class="focus-ring group -mx-2 flex min-h-11 items-start gap-3 rounded-2xl px-2 py-2 hover:bg-primary/5"
@@ -40,7 +41,7 @@ const area = computed(() => cellAreaLabel(props.address))
           />
         </span>
       </span>
-    </a>
+    </ULink>
     <p
       v-if="hiddenNote && !address.addressLine"
       class="mt-1 text-xs text-muted"

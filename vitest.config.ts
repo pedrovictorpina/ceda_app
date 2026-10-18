@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
-  test: { include: ['tests/**/*.test.ts'], environment: 'node' }
+  // Threads avoid forked workers referencing inaccessible Windows sandbox temp files.
+  test: { include: ['tests/**/*.test.ts'], environment: 'node', pool: 'threads' }
 })

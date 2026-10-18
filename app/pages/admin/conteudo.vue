@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { editorialPreview } from '~/utils/editorial'
+import { formatEditorialDate } from '~/utils/churchAgenda'
+
 definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] })
 useSeoMeta({ title: 'Conteúdo e avisos' })
 
@@ -21,11 +24,27 @@ interface EditorialContent {
 const auth = useAuthStore()
 const loading = ref(true)
 const saving = ref(false)
-const editorOpen = ref(false)
+const editorVisible = ref(false)
+const discardOpen = ref(false)
+const pendingRoute = ref('')
+const baseline = ref('')
+const previewVisible = ref(false)
+const editorOpen = computed({
+  get: () => editorVisible.value,
+  set: (value: boolean) => {
+    if (value) editorVisible.value = true
+    else if (!saving.value) {
+      if (isDirty.value) discardOpen.value = true
+      else editorVisible.value = false
+    }
+  }
+})
 const editingId = ref<string | null>(null)
 const feedback = ref('')
 const errorMessage = ref('')
 const contentItems = ref<EditorialContent[]>([])
+let accountRevision = 0
+const isCurrentAccount = (revision: number, userId: string) => revision === accountRevision && auth.profile?.id === userId
 const form = reactive({
   title: '',
   content: '',
@@ -36,6 +55,34 @@ const form = reactive({
   publishAt: '',
   notifyMembers: true
 })
+const isDirty = computed(() => editorVisible.value && JSON.stringify(form) !== baseline.value)
+const preview = computed(() => editorialPreview({ title: form.title, content: form.content, slug: form.slug, message_date: form.messageDate }))
+
+function discardChanges() {
+  editorVisible.value = false
+  discardOpen.value = false
+  const destination = pendingRoute.value
+  pendingRoute.value = ''
+  if (destination) void navigateTo(destination)
+}
+function keepEditing() {
+  pendingRoute.value = ''
+  discardOpen.value = false
+}
+function protectUnload(event: BeforeUnloadEvent) {
+  if (!isDirty.value) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+onBeforeRouteLeave((to) => {
+  if (saving.value) return false
+  if (!isDirty.value) return true
+  pendingRoute.value = to.fullPath
+  discardOpen.value = true
+  return false
+})
+onMounted(() => window.addEventListener('beforeunload', protectUnload))
+onBeforeUnmount(() => window.removeEventListener('beforeunload', protectUnload))
 
 const typeItems = [
   { label: 'Palavra do Dia', value: 'word_of_day' },
@@ -89,14 +136,33 @@ function resetForm() {
   })
 }
 
+watch(() => auth.profile?.id, () => {
+  accountRevision += 1
+  editorVisible.value = false
+  discardOpen.value = false
+  previewVisible.value = false
+  pendingRoute.value = ''
+  saving.value = false
+  loading.value = false
+  contentItems.value = []
+  feedback.value = ''
+  errorMessage.value = ''
+  resetForm()
+  baseline.value = JSON.stringify(form)
+}, { flush: 'sync' })
+
 function openCreate() {
+  if (!auth.profile) return
   resetForm()
   feedback.value = ''
   errorMessage.value = ''
+  baseline.value = JSON.stringify(form)
+  previewVisible.value = false
   editorOpen.value = true
 }
 
 function editContent(item: EditorialContent) {
+  if (!auth.profile) return
   editingId.value = item.id
   Object.assign(form, {
     title: item.title,
@@ -105,15 +171,20 @@ function editContent(item: EditorialContent) {
     status: editorialStatus(item) === 'archived' ? 'draft' : editorialStatus(item),
     slug: item.slug || '',
     messageDate: item.message_date,
-    publishAt: item.publish_at ? item.publish_at.slice(0, 16) : '',
+    publishAt: item.publish_at ? new Date(new Date(item.publish_at).getTime() - new Date(item.publish_at).getTimezoneOffset() * 60_000).toISOString().slice(0, 16) : '',
     notifyMembers: false
   })
   feedback.value = ''
   errorMessage.value = ''
+  baseline.value = JSON.stringify(form)
+  previewVisible.value = false
   editorOpen.value = true
 }
 
 async function loadContent() {
+  const userId = auth.profile?.id
+  const revision = accountRevision
+  if (!userId) return
   const { $supabase } = useNuxtApp()
   if (!$supabase) {
     errorMessage.value = 'O serviço de dados não está configurado neste ambiente.'
@@ -122,17 +193,19 @@ async function loadContent() {
   }
 
   loading.value = true
+  errorMessage.value = ''
   const { data, error } = await $supabase
     .from('daily_messages')
     .select('id, title, content, content_type, slug, message_date, publish_at, status, created_at, updated_at')
     .order('updated_at', { ascending: false })
     .limit(100)
+  if (!isCurrentAccount(revision, userId)) return
   if (error) errorMessage.value = 'Não foi possível carregar as publicações.'
   else contentItems.value = data as EditorialContent[]
   loading.value = false
 }
 
-async function notifyOptedInMembers(item: EditorialContent) {
+async function notifyOptedInMembers(item: EditorialContent, revision: number, userId: string) {
   const { $supabase } = useNuxtApp()
   if (!$supabase) return { count: 0, error: null as Error | null }
 
@@ -141,6 +214,7 @@ async function notifyOptedInMembers(item: EditorialContent) {
     .select('id')
     .eq('notifications_enabled', true)
     .limit(1000)
+  if (!isCurrentAccount(revision, userId)) return { count: 0, error: null }
   if (profilesError) return { count: 0, error: profilesError }
   if (!profiles?.length) return { count: 0, error: null }
 
@@ -163,8 +237,14 @@ async function saveContent() {
     errorMessage.value = 'Defina data e horário para o agendamento.'
     return
   }
+  if (!form.messageDate || (form.status === 'scheduled' && (!Number.isFinite(Date.parse(form.publishAt)) || Date.parse(form.publishAt) <= Date.now()))) {
+    errorMessage.value = 'Confira a data da mensagem e escolha um horário futuro para agendar.'
+    return
+  }
   const { $supabase } = useNuxtApp()
   if (!$supabase) return
+  const userId = auth.profile.id
+  const revision = accountRevision
 
   saving.value = true
   errorMessage.value = ''
@@ -190,6 +270,7 @@ async function saveContent() {
   }
 
   let item: EditorialContent | null = null
+  const wasEditing = Boolean(editingId.value)
   if (editingId.value) {
     const { data, error } = await $supabase
       .from('daily_messages')
@@ -197,6 +278,7 @@ async function saveContent() {
       .eq('id', editingId.value)
       .select('id, title, content, content_type, slug, message_date, publish_at, status, created_at, updated_at')
       .single()
+    if (!isCurrentAccount(revision, userId)) return
     if (error) {
       saving.value = false
       errorMessage.value = error.code === '23505' ? 'Este link já está sendo usado por outra publicação.' : 'Não foi possível atualizar a publicação.'
@@ -206,9 +288,10 @@ async function saveContent() {
   } else {
     const { data, error } = await $supabase
       .from('daily_messages')
-      .insert({ ...payload, author_id: auth.profile.id })
+      .insert({ ...payload, author_id: userId })
       .select('id, title, content, content_type, slug, message_date, publish_at, status, created_at, updated_at')
       .single()
+    if (!isCurrentAccount(revision, userId)) return
     if (error) {
       saving.value = false
       errorMessage.value = error.code === '23505' ? 'Este link já está sendo usado por outra publicação.' : 'Não foi possível criar a publicação.'
@@ -217,31 +300,39 @@ async function saveContent() {
     item = data as EditorialContent
   }
 
+  // Once saved, retries must update this publication instead of creating a duplicate.
+  editingId.value = item.id
+  baseline.value = JSON.stringify(form)
   const historyResult = await $supabase.from('daily_message_history').insert({
     message_id: item.id,
-    editor_id: auth.profile.id,
-    snapshot: { ...payload, action: editingId.value ? 'updated' : 'created' }
+    editor_id: userId,
+    snapshot: { ...payload, action: wasEditing ? 'updated' : 'created' }
   })
+  if (!isCurrentAccount(revision, userId)) return
   if (historyResult.error) {
     saving.value = false
-    errorMessage.value = 'A publicação foi salva, mas não foi possível registrar seu histórico.'
     await loadContent()
+    if (!isCurrentAccount(revision, userId)) return
+    errorMessage.value = 'A publicação foi salva, mas não foi possível registrar seu histórico.'
     return
   }
 
   let notificationCount = 0
   if (form.status === 'published' && form.notifyMembers) {
-    const notificationResult = await notifyOptedInMembers(item)
+    const notificationResult = await notifyOptedInMembers(item, revision, userId)
+    if (!isCurrentAccount(revision, userId)) return
     if (notificationResult.error) {
       saving.value = false
-      errorMessage.value = 'A publicação foi salva, mas os avisos internos não puderam ser enviados.'
       await loadContent()
+      if (!isCurrentAccount(revision, userId)) return
+      errorMessage.value = 'A publicação foi salva, mas os avisos internos não puderam ser enviados.'
       return
     }
     notificationCount = notificationResult.count
   }
 
   saving.value = false
+  baseline.value = JSON.stringify(form)
   editorOpen.value = false
   feedback.value = notificationCount
     ? `Publicação salva e ${notificationCount} membro(s) elegível(is) receberam o aviso interno.`
@@ -441,12 +532,15 @@ useCreateFromQuery(openCreate)
     <UModal
       v-model:open="editorOpen"
       :title="editingId ? 'Editar publicação' : 'Nova publicação'"
-      :description="'Rascunhos ficam visíveis apenas à gestão. Publicações seguem as permissões do banco.'"
+      description="Rascunhos ficam apenas com a gestão. Ao publicar, o conteúdo aparece na área de membros."
+      :dismissible="!saving"
+      :close="{ disabled: saving }"
     >
       <template #body>
-        <form
+        <UForm
+          :state="form"
           class="grid gap-4"
-          @submit.prevent="saveContent"
+          @submit="saveContent"
         >
           <div class="grid gap-4 sm:grid-cols-2">
             <UFormField
@@ -460,7 +554,7 @@ useCreateFromQuery(openCreate)
               />
             </UFormField>
             <UFormField
-              label="Status"
+              label="Quando disponibilizar"
               required
             >
               <USelect
@@ -481,9 +575,8 @@ useCreateFromQuery(openCreate)
             />
           </UFormField>
           <UFormField
-            label="Link da publicação"
-            hint="Gerado a partir do título; personalize se necessário."
-            required
+            label="Endereço da publicação"
+            description="Opcional. Se deixar em branco, será criado a partir do título. Depois de publicar, mantenha o endereço para preservar os links compartilhados."
           >
             <UInput
               v-model="form.slug"
@@ -492,7 +585,8 @@ useCreateFromQuery(openCreate)
             />
           </UFormField>
           <UFormField
-            label="Data editorial"
+            label="Data exibida aos membros"
+            description="Essa data identifica a mensagem ou notícia e determina sua ordem na lista."
             required
           >
             <AppDatePicker v-model="form.messageDate" />
@@ -524,12 +618,57 @@ useCreateFromQuery(openCreate)
             v-model="form.notifyMembers"
             label="Criar aviso interno para membros com notificações habilitadas"
           />
+          <UAlert
+            v-if="errorMessage"
+            color="error"
+            variant="soft"
+            title="Confira antes de salvar"
+            :description="errorMessage"
+          />
+          <UButton
+            type="button"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-eye"
+            :label="previewVisible ? 'Voltar à edição' : 'Conferir como o membro verá'"
+            :aria-expanded="previewVisible"
+            @click="previewVisible = !previewVisible"
+          />
+          <UCard
+            v-if="previewVisible"
+            class="border-primary/30"
+            aria-label="Prévia da publicação"
+          >
+            <p class="text-xs font-semibold uppercase tracking-wide text-muted">
+              Prévia · {{ typeLabels[form.contentType] }}
+            </p>
+            <p
+              v-if="form.messageDate"
+              class="mt-2 text-sm text-muted"
+            >
+              {{ formatEditorialDate(form.messageDate) }}
+            </p>
+            <h2 class="mt-4 break-words text-2xl font-bold">
+              {{ preview.title || 'Título da publicação' }}
+            </h2>
+            <p class="mt-4 whitespace-pre-line text-lg leading-8 text-muted">
+              {{ preview.excerpt || 'O primeiro parágrafo aparecerá aqui.' }}
+            </p>
+            <p
+              v-for="(paragraph, index) in preview.body"
+              :key="index"
+              class="mt-5 whitespace-pre-line leading-7"
+            >
+              {{ paragraph }}
+            </p>
+          </UCard>
           <div class="flex flex-wrap justify-end gap-2 pt-2">
             <UButton
               type="button"
               color="neutral"
               variant="outline"
               label="Cancelar"
+              :disabled="saving"
               @click="editorOpen = false"
             />
             <UButton
@@ -538,7 +677,30 @@ useCreateFromQuery(openCreate)
               :label="form.status === 'published' ? 'Publicar' : form.status === 'scheduled' ? 'Agendar' : 'Salvar rascunho'"
             />
           </div>
-        </form>
+        </UForm>
+      </template>
+    </UModal>
+    <UModal
+      v-model:open="discardOpen"
+      title="Descartar alterações?"
+      description="Você tem alterações que ainda não foram salvas. Volte à edição para salvar um rascunho e continuar depois."
+      :dismissible="false"
+      :close="false"
+    >
+      <template #footer>
+        <div class="flex w-full flex-wrap justify-end gap-3">
+          <UButton
+            color="neutral"
+            variant="outline"
+            label="Continuar editando"
+            @click="keepEditing"
+          />
+          <UButton
+            color="error"
+            label="Descartar alterações"
+            @click="discardChanges"
+          />
+        </div>
       </template>
     </UModal>
   </div>

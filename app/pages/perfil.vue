@@ -1,17 +1,15 @@
 <script setup lang="ts">
-import { validateBirthDate } from '~/utils/birthdays'
 import { buildRegistrationInvitationUrl, invitationDescription, type InvitationSource } from '~/utils/invitations'
 
 definePageMeta({ middleware: 'auth' })
 useSeoMeta({ title: 'Perfil' })
 const auth = useAuthStore()
-const form = reactive({ name: auth.profile?.name || '', email: auth.profile?.email || '', phone: '', sex: '', birthDate: '', notificationsEnabled: true, birthdayGreetingsOptIn: false })
-const birthdayOptInAvailable = ref(true)
+const { form, birthdayOptInAvailable, loading: profileLoading, ready: profileReady, errorMessage: profileLoadError, status: saveStatus, saving: savePending, dirty: profileDirty, load: loadProfileDetails, save: saveProfile } = useProfileDetails()
 const confirmDeletion = ref(false)
 const requestStatus = ref('')
-const saveStatus = ref('')
-const savePending = ref(false)
-const avatarInput = ref<HTMLInputElement>()
+const deletionPending = ref(false)
+const deletionSent = ref(false)
+const avatarInput = useTemplateRef('avatarInput')
 const avatarPath = ref<string | null>(null)
 const avatarUrl = ref('')
 const avatarStatus = ref('')
@@ -29,6 +27,7 @@ const familyMembers = ref<FamilyMember[]>([])
 const familyLoading = ref(true)
 const familySaving = ref(false)
 const familyStatus = ref('')
+const familyLoadError = ref('')
 const familyEditorOpen = ref(false)
 const familyDeleteOpen = ref(false)
 const familyMemberToDelete = ref<FamilyMember | null>(null)
@@ -37,6 +36,7 @@ const inviteImageOpen = ref(false)
 const familyInviteOpen = ref(false)
 const inviteStatus = ref('')
 const familyForm = reactive({ id: '', name: '', relationship: '', birthDate: '', showInvitation: true })
+let familyLoadId = 0
 const sexItems = [
   { label: 'Feminino', value: 'female' },
   { label: 'Masculino', value: 'male' },
@@ -137,21 +137,19 @@ function openFamilyEditor(member?: FamilyMember) {
 }
 
 async function loadFamilyMembers() {
-  if (!auth.profile) return
-  const { $supabase } = useNuxtApp()
-  if (!$supabase) {
-    familyStatus.value = 'Não foi possível carregar a família porque o serviço de dados está indisponível.'
-    familyLoading.value = false
-    return
-  }
+  const userId = auth.profile?.id
+  const current = ++familyLoadId
   familyLoading.value = true
-  const { data, error } = await $supabase
-    .from('family_members')
-    .select('id, full_name, relationship, birth_date')
-    .order('birth_date')
-  familyMembers.value = (data || []) as FamilyMember[]
-  if (error) familyStatus.value = 'Não foi possível carregar seus familiares.'
-  familyLoading.value = false
+  familyLoadError.value = ''
+  try {
+    const { $supabase } = useNuxtApp()
+    if (!$supabase || !userId) throw new Error('session')
+    const { data, error } = await $supabase.from('family_members').select('id, full_name, relationship, birth_date').eq('owner_id', userId).order('birth_date')
+    if (error) throw error
+    if (current === familyLoadId && auth.profile?.id === userId) familyMembers.value = (data || []) as FamilyMember[]
+  } catch {
+    if (current === familyLoadId) familyLoadError.value = 'Não foi possível atualizar seus familiares. A lista já carregada foi mantida; tente novamente.'
+  } finally { if (current === familyLoadId) familyLoading.value = false }
 }
 
 async function saveFamilyMember() {
@@ -240,14 +238,15 @@ const avatarInitials = computed(() => (auth.profile?.name || 'Membro')
   .join(''))
 
 function openAvatarSelector() {
-  avatarInput.value?.click()
+  avatarInput.value?.inputRef?.click()
 }
 
 async function loadAvatar(path: string) {
+  const userId = auth.profile?.id
   const { $supabase } = useNuxtApp()
   if (!$supabase) return
   const { data, error } = await $supabase.storage.from('avatars').createSignedUrl(path, 60 * 60)
-  if (error || !data?.signedUrl) return
+  if (error || !data?.signedUrl || auth.profile?.id !== userId || avatarPath.value !== path) return
   avatarUrl.value = data.signedUrl
   if (auth.profile) auth.profile.avatarUrl = data.signedUrl
 }
@@ -327,83 +326,84 @@ async function removeAvatar() {
   avatarPending.value = false
 }
 
-async function saveProfile() {
-  if (!auth.profile || !form.name.trim()) return
-  const birthDateError = validateBirthDate(form.birthDate)
-  if (birthDateError || (form.birthdayGreetingsOptIn && !form.birthDate)) {
-    saveStatus.value = birthDateError || 'Informe sua data de nascimento para receber felicitações.'
-    return
-  }
-  const { $supabase } = useNuxtApp()
-  if (!$supabase) {
-    saveStatus.value = 'Não foi possível salvar porque o serviço de dados está indisponível.'
-    return
-  }
-  savePending.value = true
-  saveStatus.value = ''
-  const { error } = await $supabase.from('profiles').update({
-    full_name: form.name.trim(),
-    phone: form.phone.trim() || null,
-    sex: form.sex || null,
-    birth_date: form.birthDate || null,
-    notifications_enabled: form.notificationsEnabled,
-    ...(birthdayOptInAvailable.value ? { birthday_greetings_opt_in: form.birthdayGreetingsOptIn } : {})
-  }).eq('id', auth.profile.id)
-  if (error) saveStatus.value = 'Não foi possível salvar as alterações.'
-  else {
-    auth.profile.name = form.name.trim()
-    saveStatus.value = 'Perfil atualizado com sucesso.'
-  }
-  savePending.value = false
-}
-
 async function requestDeletion() {
-  if (!confirmDeletion.value || !auth.profile) return
-  const { $supabase } = useNuxtApp()
-  if (!$supabase) {
-    requestStatus.value = 'Supabase não configurado; nenhuma solicitação foi enviada.'
-    return
-  }
-  const { error } = await $supabase.from('account_deletion_requests').insert({ user_id: auth.profile.id, confirmed_at: new Date().toISOString() })
-  requestStatus.value = error ? error.message : 'Solicitação registrada para análise administrativa.'
+  if (!confirmDeletion.value || !auth.profile || deletionPending.value || deletionSent.value) return
+  const userId = auth.profile.id
+  deletionPending.value = true
+  requestStatus.value = ''
+  try {
+    const { $supabase } = useNuxtApp()
+    if (!$supabase) throw new Error('session')
+    const { data, error } = await $supabase.from('account_deletion_requests').insert({ user_id: userId, confirmed_at: new Date().toISOString() }).select('id').single()
+    if (error || !data?.id) throw error || new Error('not-created')
+    if (auth.profile?.id !== userId) return
+    deletionSent.value = true
+    confirmDeletion.value = false
+    requestStatus.value = 'Solicitação registrada para análise administrativa. Sua conta e seus dados continuam disponíveis enquanto o pedido é analisado.'
+  } catch {
+    if (auth.profile?.id === userId) requestStatus.value = 'Não foi possível confirmar o envio da solicitação. Confira a conexão e procure os canais de Contato para acompanhar o pedido.'
+  } finally { deletionPending.value = false }
 }
 
-onMounted(async () => {
-  const { $supabase } = useNuxtApp()
-  if (!$supabase || !auth.profile) return
-  const columns = 'full_name, email, phone, sex, birth_date, avatar_path, notifications_enabled'
-  const withBirthday = await $supabase.from('profiles').select(`${columns}, birthday_greetings_opt_in`).eq('id', auth.profile.id).maybeSingle()
-  // Sem a migração de aniversariantes aplicada, carrega o perfil sem a nova preferência.
-  birthdayOptInAvailable.value = !withBirthday.error
-  const { data } = withBirthday.error
-    ? await $supabase.from('profiles').select(columns).eq('id', auth.profile.id).maybeSingle()
-    : withBirthday
+async function loadProfile() {
+  const data = await loadProfileDetails()
   if (data) {
-    form.name = data.full_name || ''
-    form.email = data.email || ''
-    form.phone = data.phone || ''
-    form.sex = data.sex || ''
-    form.birthDate = data.birth_date || ''
-    form.notificationsEnabled = data.notifications_enabled
-    form.birthdayGreetingsOptIn = 'birthday_greetings_opt_in' in data && data.birthday_greetings_opt_in === true
-    avatarPath.value = data.avatar_path || null
-    if (avatarPath.value) await loadAvatar(avatarPath.value)
+    avatarPath.value = data.avatar_path
+    if (data.avatar_path) {
+      try {
+        await loadAvatar(data.avatar_path)
+      } catch {
+        avatarStatus.value = 'Seu perfil foi carregado, mas não foi possível abrir a foto. Tente atualizar a página.'
+      }
+    }
   }
+}
+watch(() => auth.profile?.id, () => {
+  ++familyLoadId
+  familyMembers.value = []
+  familyLoading.value = false
+  familyStatus.value = ''
+  familyLoadError.value = 'Seu acesso mudou. Atualize a lista para consultar os familiares desta conta.'
+  familyEditorOpen.value = false
+  familyDeleteOpen.value = false
+  familyMemberToDelete.value = null
+  resetFamilyForm()
+  avatarPath.value = null
+  avatarUrl.value = ''
+  avatarStatus.value = ''
+  confirmDeletion.value = false
+  deletionSent.value = false
+  requestStatus.value = ''
+}, { flush: 'sync' })
+onMounted(async () => {
+  await loadProfile()
   await loadFamilyMembers()
 })
 </script>
 
 <template>
   <div>
+    <AppUnsavedChanges :dirty="profileDirty" />
     <BrandLoadingStatus
       v-if="savePending || avatarPending || familySaving"
       label="Salvando perfil…"
     />
     <PageIntro
       title="Perfil"
-      description="Seus dados pessoais. A idade é sempre derivada da data de nascimento."
+      description="Atualize seus dados e escolha o que compartilhar com a comunidade."
       icon="i-lucide-user-round"
     /><div class="space-y-5">
+      <UAlert
+        v-if="profileLoadError"
+        color="error"
+        :description="profileLoadError"
+        :actions="[{ label: 'Tentar novamente', onClick: loadProfile }]"
+        class="max-w-2xl"
+      />
+      <BrandLoadingStatus
+        v-if="profileLoading"
+        label="Carregando seu perfil…"
+      />
       <UCard class="max-w-2xl">
         <div class="flex flex-col gap-5 sm:flex-row sm:items-center">
           <div class="grid size-24 shrink-0 place-items-center overflow-hidden rounded-full bg-primary/10 text-xl font-semibold text-primary">
@@ -422,13 +422,13 @@ onMounted(async () => {
             <p class="mt-1 text-sm text-muted">
               Use uma imagem JPG, PNG ou WebP de até 5 MB.
             </p>
-            <input
+            <UInput
               ref="avatarInput"
               class="sr-only"
               type="file"
               accept="image/jpeg,image/png,image/webp"
               @change="handleAvatarSelection"
-            >
+            />
             <div class="mt-4 flex flex-wrap gap-2">
               <UButton
                 :loading="avatarPending"
@@ -457,63 +457,70 @@ onMounted(async () => {
         </div>
       </UCard>
       <UCard class="max-w-2xl">
-        <div class="grid gap-4 sm:grid-cols-2">
-          <UFormField label="Nome">
-            <UInput
-              v-model="form.name"
-              class="w-full"
-            />
-          </UFormField><UFormField label="E-mail">
-            <UInput
-              v-model="form.email"
-              type="email"
-              readonly
-              class="w-full"
-            />
-          </UFormField><UFormField label="Telefone">
-            <UInput
-              v-model="form.phone"
-              type="tel"
-              class="w-full"
-            />
-          </UFormField><UFormField label="Sexo">
-            <USelect
-              v-model="form.sex"
-              :items="sexItems"
-              class="w-full"
-            />
-          </UFormField><UFormField label="Data de nascimento">
-            <AppDatePicker
-              v-model="form.birthDate"
-              :max="new Date().toISOString().slice(0, 10)"
-            />
-          </UFormField>
-        </div>
-        <p
-          v-if="profileAge !== null"
-          class="mt-3 text-sm text-muted"
+        <fieldset
+          :disabled="profileLoading || !profileReady || savePending"
+          class="contents"
         >
-          Sua idade: <span class="font-medium text-default">{{ profileAge }} {{ profileAge === 1 ? 'ano' : 'anos' }}</span>
-        </p>
-        <div class="mt-5 rounded-xl border border-default bg-elevated/40 p-4">
-          <USwitch
-            v-model="form.notificationsEnabled"
-            label="Receber notificações"
-            description="Escolha se deseja receber novos avisos e lembretes da comunidade neste perfil."
-            checked-icon="i-lucide-bell"
-            unchecked-icon="i-lucide-bell-off"
-          />
-          <p class="mt-3 text-xs leading-5 text-muted">
-            Esta preferência vale para novos avisos internos. Notificações já recebidas continuam disponíveis na sua caixa de entrada.
+          <div class="grid gap-4 sm:grid-cols-2">
+            <UFormField label="Nome">
+              <UInput
+                v-model="form.name"
+                class="w-full"
+              />
+            </UFormField><UFormField label="E-mail">
+              <UInput
+                v-model="form.email"
+                type="email"
+                readonly
+                class="w-full"
+              />
+            </UFormField><UFormField label="Telefone">
+              <UInput
+                v-model="form.phone"
+                type="tel"
+                class="w-full"
+              />
+            </UFormField><UFormField label="Sexo">
+              <USelect
+                v-model="form.sex"
+                :items="sexItems"
+                class="w-full"
+              />
+            </UFormField><UFormField label="Data de nascimento">
+              <AppDatePicker
+                v-model="form.birthDate"
+                :max="new Date().toISOString().slice(0, 10)"
+              />
+            </UFormField>
+          </div>
+          <p
+            v-if="profileAge !== null"
+            class="mt-3 text-sm text-muted"
+          >
+            Sua idade: <span class="font-medium text-default">{{ profileAge }} {{ profileAge === 1 ? 'ano' : 'anos' }}</span>
           </p>
-        </div>
-        <BirthdayGreetingsToggle
-          v-model="form.birthdayGreetingsOptIn"
-          :has-birth-date="Boolean(form.birthDate)"
-          :available="birthdayOptInAvailable"
-        /><template #footer>
+          <div class="mt-5 rounded-xl border border-default bg-elevated/40 p-4">
+            <USwitch
+              v-model="form.notificationsEnabled"
+              label="Receber notificações"
+              description="Escolha se deseja receber novos avisos e lembretes da comunidade neste perfil."
+              checked-icon="i-lucide-bell"
+              unchecked-icon="i-lucide-bell-off"
+            />
+            <p class="mt-3 text-xs leading-5 text-muted">
+              Esta preferência vale para novos avisos internos. Notificações já recebidas continuam disponíveis na sua caixa de entrada.
+            </p>
+          </div>
+          <BirthdayGreetingsToggle
+            v-model="form.birthdayGreetingsOptIn"
+            :has-birth-date="Boolean(form.birthDate)"
+            :available="birthdayOptInAvailable"
+          />
+        </fieldset>
+        <template #footer>
           <UButton
             :loading="savePending"
+            :disabled="profileLoading || !profileReady"
             label="Salvar alterações"
             @click="saveProfile"
           />
@@ -557,7 +564,10 @@ onMounted(async () => {
               @click="birthdayPeriod = item.value"
             />
           </div>
-          <div class="mt-4">
+          <div
+            v-if="!familyLoading && !familyLoadError"
+            class="mt-4"
+          >
             <p class="text-sm font-medium">
               Aniversariantes: {{ birthdayPeriodItems.find(item => item.value === birthdayPeriod)?.label.toLowerCase() }}
             </p>
@@ -595,7 +605,10 @@ onMounted(async () => {
             <h3 class="text-sm font-semibold">
               Familiares cadastrados
             </h3>
-            <span class="text-xs text-muted">{{ familyMembers.length }} cadastrado{{ familyMembers.length === 1 ? '' : 's' }}</span>
+            <span
+              v-if="!familyLoading && !familyLoadError"
+              class="text-xs text-muted"
+            >{{ familyMembers.length }} cadastrado{{ familyMembers.length === 1 ? '' : 's' }}</span>
           </div>
           <div
             v-if="familyLoading"
@@ -649,12 +662,19 @@ onMounted(async () => {
             </div>
           </div>
           <p
-            v-else
+            v-else-if="!familyLoadError"
             class="mt-3 text-sm text-muted"
           >
             Nenhum familiar cadastrado ainda.
           </p>
         </div>
+        <UAlert
+          v-if="familyLoadError"
+          class="mt-4"
+          color="error"
+          :description="familyLoadError"
+          :actions="[{ label: 'Tentar novamente', onClick: loadFamilyMembers }]"
+        />
         <UAlert
           v-if="familyStatus"
           class="mt-4"
@@ -721,13 +741,15 @@ onMounted(async () => {
           A solicitação abre uma análise administrativa. Nenhum usuário ou dado é apagado automaticamente.
         </p><UCheckbox
           v-model="confirmDeletion"
+          :disabled="deletionPending || deletionSent"
           class="mt-4"
           label="Confirmo que desejo solicitar a exclusão da minha conta"
         /><UButton
           class="mt-4"
           color="error"
           variant="outline"
-          :disabled="!confirmDeletion"
+          :disabled="!confirmDeletion || deletionSent"
+          :loading="deletionPending"
           label="Solicitar exclusão da conta"
           @click="requestDeletion"
         /><UAlert
@@ -742,10 +764,10 @@ onMounted(async () => {
 
     <p class="mt-8 text-center text-sm text-muted">
       Saiba como cuidamos dos seus dados na
-      <NuxtLink
+      <ULink
         to="/privacidade"
         class="focus-ring rounded font-medium text-primary underline-offset-4 hover:underline"
-      >Política de Privacidade</NuxtLink>.
+      >Política de Privacidade</ULink>.
     </p>
     <UModal v-model:open="familyEditorOpen">
       <template #content>

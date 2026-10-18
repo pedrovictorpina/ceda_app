@@ -1,6 +1,11 @@
 <script setup lang="ts">
+import { formatAgendaDate } from '~/utils/churchAgenda'
+
 definePageMeta({ layout: 'public' })
 useSeoMeta({ title: 'Bem-vindo', description: 'Uma base digital para viver comunidade, agenda e cuidado.' })
+const { events, loading, errorMessage, load } = useChurchAgenda(true)
+const nextService = computed(() => events.value[0])
+onMounted(() => load())
 
 const highlights = [
   { title: 'Palavra para o dia', text: 'Conteúdo pastoral para ler com calma e compartilhar.', icon: 'i-lucide-book-open-text' },
@@ -45,35 +50,57 @@ const highlights = [
           <div class="absolute -inset-4 rounded-[2rem] bg-primary/10 blur-2xl" />
           <UCard class="relative border-primary/20 bg-default/90 shadow-2xl shadow-primary/10">
             <div class="p-2 sm:p-4">
-              <div class="flex items-center justify-between">
-                <UBadge label="Próximo encontro" />
-                <span class="text-sm font-medium text-muted">Domingo</span>
-              </div>
+              <UBadge label="Próximo culto publicado" />
               <UIcon
                 name="i-lucide-church"
                 class="mt-8 size-10 text-primary"
               />
-              <h2 class="mt-4 text-3xl font-bold">
-                Culto de celebração
-              </h2>
-              <p class="mt-3 text-lg text-muted">
-                19h · Templo principal
+              <p
+                v-if="loading"
+                class="mt-5 text-muted"
+                role="status"
+              >
+                Consultando a programação…
               </p>
-              <div class="mt-8 grid grid-cols-2 gap-3">
-                <div class="rounded-xl bg-elevated p-4">
-                  <p class="text-xs uppercase tracking-wide text-muted">
-                    Para quem
-                  </p><p class="mt-1 font-semibold">
-                    Toda a família
-                  </p>
-                </div>
-                <div class="rounded-xl bg-elevated p-4">
-                  <p class="text-xs uppercase tracking-wide text-muted">
-                    Duração
-                  </p><p class="mt-1 font-semibold">
-                    Cerca de 1h30
-                  </p>
-                </div>
+              <UAlert
+                v-else-if="errorMessage"
+                class="mt-5"
+                color="error"
+                variant="soft"
+                title="Não foi possível consultar o próximo culto"
+                :description="errorMessage"
+                :actions="[{ label: 'Tentar novamente', onClick: () => load() }]"
+              />
+              <template v-else-if="nextService">
+                <h2 class="mt-4 break-words text-3xl font-bold">
+                  {{ nextService.title }}
+                </h2>
+                <p class="mt-3 text-lg font-semibold text-primary">
+                  {{ formatAgendaDate(nextService.starts_at) }}
+                </p>
+                <p class="mt-3 text-muted">
+                  {{ nextService.location || 'Confirme o local com a equipe antes de sair.' }}
+                </p>
+                <p class="mt-4 text-sm text-muted">
+                  Horário de Brasília. Consulte os detalhes para planejar sua visita.
+                </p>
+              </template>
+              <div
+                v-else
+                class="mt-5"
+              >
+                <h2 class="text-2xl font-bold">
+                  Vamos ajudar você a planejar sua visita
+                </h2>
+                <p class="mt-3 text-muted">
+                  Ainda não há um próximo culto publicado. Fale com a equipe para confirmar dia, horário e local.
+                </p>
+                <UButton
+                  class="mt-5"
+                  to="/contato"
+                  variant="outline"
+                  label="Falar com a CEDA"
+                />
               </div>
             </div>
             <template #footer>

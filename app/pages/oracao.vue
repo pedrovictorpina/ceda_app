@@ -1,94 +1,54 @@
 <script setup lang="ts">
-type PrayerVisibility = 'private' | 'pastoral' | 'community'
-interface PrayerItem { id: string, title: string, details: string, visibility: PrayerVisibility, status: 'active' | 'answered', createdAt: string }
+import type { FormError } from '@nuxt/ui'
+import type { PrayerItem, PrayerVisibility } from '~/composables/usePrayerRequests'
 
 definePageMeta({ middleware: 'auth' })
 useSeoMeta({ title: 'Motivos de oração' })
-
 const auth = useAuthStore()
 const open = ref(false)
-const saving = ref(false)
 const feedback = ref('')
-const requests = ref<PrayerItem[]>([])
-const form = reactive<{ title: string, details: string, visibility: PrayerVisibility }>({ title: '', details: '', visibility: 'private' })
+const { requests, loading, saving, loadError, actionError, load: loadPrayers, create, markAnswered: saveAnswered } = usePrayerRequests()
+const form = reactive({ title: '', details: '', visibility: 'private' as PrayerVisibility })
 const visibilityItems = [
   { label: 'Somente eu', value: 'private' },
   { label: 'Equipe pastoral', value: 'pastoral' },
   { label: 'Comunidade', value: 'community' }
 ]
 const visibilityLabels: Record<PrayerVisibility, string> = { private: 'Somente eu', pastoral: 'Equipe pastoral', community: 'Comunidade' }
+const hasDraft = computed(() => Boolean(form.title.trim() || form.details.trim()))
+
+function validatePrayer(state: typeof form): FormError[] {
+  return state.title.trim() ? [] : [{ name: 'title', message: 'Dê um título para reconhecer este pedido depois.' }]
+}
 
 async function createPrayer() {
-  if (!form.title.trim() || !auth.profile) return
-  saving.value = true
+  if (saving.value) return
+  const submitted = JSON.stringify(form)
   feedback.value = ''
-  const localItem: PrayerItem = {
-    id: crypto.randomUUID(),
-    title: form.title.trim(),
-    details: form.details.trim(),
-    visibility: form.visibility,
-    status: 'active',
-    createdAt: 'Agora'
+  const item = await create(form)
+  if (!item) return
+  if (JSON.stringify(form) === submitted) {
+    Object.assign(form, { title: '', details: '', visibility: 'private' })
+    open.value = false
   }
-  const { $supabase } = useNuxtApp()
-  if ($supabase) {
-    const { data, error } = await $supabase.from('prayer_requests').insert({
-      author_id: auth.profile.id,
-      title: localItem.title,
-      details: localItem.details || null,
-      visibility: localItem.visibility
-    }).select('id').single()
-    if (error) {
-      feedback.value = 'Não foi possível salvar o pedido. Tente novamente.'
-      saving.value = false
-      return
-    }
-    localItem.id = data.id
-  }
-  requests.value.unshift(localItem)
-  Object.assign(form, { title: '', details: '', visibility: 'private' })
-  saving.value = false
-  open.value = false
   feedback.value = 'Seu motivo de oração foi registrado com a privacidade escolhida.'
 }
 
 async function markAnswered(item: PrayerItem) {
-  const { $supabase } = useNuxtApp()
-  if ($supabase) {
-    const { error } = await $supabase.from('prayer_requests').update({ status: 'answered' }).eq('id', item.id)
-    if (error) {
-      feedback.value = 'Não foi possível atualizar o pedido.'
-      return
-    }
-  }
-  item.status = 'answered'
-  feedback.value = 'Que alegria! O pedido foi marcado como respondido.'
+  feedback.value = ''
+  if (await saveAnswered(item)) feedback.value = 'Que alegria! O pedido foi marcado como respondido.'
 }
-
-onMounted(async () => {
-  const { $supabase } = useNuxtApp()
-  if (!$supabase || !auth.profile) return
-  const { data } = await $supabase
-    .from('prayer_requests')
-    .select('id, title, details, visibility, status, created_at')
-    .eq('author_id', auth.profile.id)
-    .neq('status', 'archived')
-    .order('created_at', { ascending: false })
-  if (data) {
-    requests.value = data.map(row => ({
-      id: row.id,
-      title: row.title,
-      details: row.details || '',
-      visibility: row.visibility,
-      status: row.status === 'answered' ? 'answered' : 'active',
-      createdAt: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(new Date(row.created_at))
-    }))
-  }
-})
+watch(() => auth.profile?.id, () => {
+  Object.assign(form, { title: '', details: '', visibility: 'private' })
+  feedback.value = ''
+  open.value = false
+}, { flush: 'sync' })
+onMounted(loadPrayers)
 </script>
 
 <template>
   <div>
+    <AppUnsavedChanges :dirty="hasDraft" />
     <BrandLoadingStatus
       v-if="saving"
       label="Salvando oração…"
@@ -104,9 +64,37 @@ onMounted(async () => {
         Você decide quem pode ver cada pedido.
       </p>
       <UButton
-        label="Novo motivo"
+        :label="hasDraft ? 'Continuar pedido' : 'Novo motivo'"
         icon="i-lucide-plus"
         @click="open = true"
+      />
+      <UButton
+        label="Atualizar"
+        color="neutral"
+        variant="outline"
+        :loading="loading"
+        :disabled="saving"
+        @click="loadPrayers"
+      />
+    </div>
+
+    <UAlert
+      v-if="loadError || actionError"
+      class="mb-5"
+      color="error"
+      :description="actionError || loadError"
+      :actions="loadError ? [{ label: 'Tentar novamente', onClick: loadPrayers }] : undefined"
+    />
+    <div
+      v-if="loading && !requests.length"
+      class="space-y-4"
+      aria-busy="true"
+      aria-label="Carregando seus pedidos de oração"
+    >
+      <USkeleton
+        v-for="n in 3"
+        :key="n"
+        class="h-40 w-full rounded-xl"
       />
     </div>
 
@@ -158,13 +146,14 @@ onMounted(async () => {
             variant="outline"
             icon="i-lucide-circle-check-big"
             label="Marcar como respondido"
+            :disabled="saving"
             @click="markAnswered(item)"
           />
         </div>
       </UCard>
     </div>
 
-    <UCard v-else>
+    <UCard v-else-if="!loading && !loadError">
       <div class="py-10 text-center">
         <div class="mx-auto grid size-14 place-items-center rounded-2xl bg-primary/10 text-primary">
           <UIcon
@@ -189,19 +178,30 @@ onMounted(async () => {
     <UModal
       v-model:open="open"
       title="Novo motivo de oração"
-      description="Escolha o nível de privacidade antes de salvar."
+      description="Escolha quem pode ver antes de salvar. Seu texto fica nesta tela enquanto você estiver aqui."
+      :dismissible="!saving"
+      :close="!saving"
     >
       <template #body>
-        <form
+        <UForm
+          :state="form"
+          :validate="validatePrayer"
           class="space-y-4"
-          @submit.prevent="createPrayer"
+          @submit="createPrayer"
         >
+          <UAlert
+            v-if="actionError"
+            color="error"
+            :description="actionError"
+          />
           <UFormField
+            name="title"
             label="Título"
             required
           >
             <UInput
               v-model="form.title"
+              :disabled="saving"
               class="w-full"
               placeholder="Por que você deseja orar?"
             />
@@ -212,6 +212,7 @@ onMounted(async () => {
           >
             <UTextarea
               v-model="form.details"
+              :disabled="saving"
               class="w-full"
               :rows="4"
               placeholder="Acrescente apenas o que se sente confortável em compartilhar."
@@ -220,6 +221,7 @@ onMounted(async () => {
           <UFormField label="Quem pode ver">
             <USelect
               v-model="form.visibility"
+              :disabled="saving"
               :items="visibilityItems"
               class="w-full"
             />
@@ -228,14 +230,15 @@ onMounted(async () => {
             <UIcon
               name="i-lucide-lock-keyhole"
               class="mr-1 inline size-4 text-primary"
-            />A visibilidade pode ser alterada depois pela pessoa que criou o pedido.
+            />Confira quem poderá ver o pedido antes de salvar. Seus novos pedidos começam privados.
           </div>
           <div class="flex justify-end gap-3">
             <UButton
               type="button"
               color="neutral"
               variant="ghost"
-              label="Cancelar"
+              label="Continuar depois"
+              :disabled="saving"
               @click="open = false"
             />
             <UButton
@@ -245,7 +248,7 @@ onMounted(async () => {
               label="Salvar motivo"
             />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
   </div>

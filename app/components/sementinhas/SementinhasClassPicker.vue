@@ -20,7 +20,9 @@ const emit = defineEmits<{ pick: [classId: string] }>()
           v-for="item in classes"
           :key="item.id"
         >
-          <button
+          <UButton
+            color="neutral"
+            variant="ghost"
             type="button"
             class="focus-ring flex min-h-16 w-full items-center gap-3 rounded-2xl border border-default bg-default p-3 text-left transition active:scale-[0.99] disabled:opacity-60"
             :disabled="busy"
@@ -42,7 +44,7 @@ const emit = defineEmits<{ pick: [classId: string] }>()
               name="i-lucide-log-in"
               class="size-5 text-primary"
             />
-          </button>
+          </UButton>
         </li>
       </ul>
     </template>

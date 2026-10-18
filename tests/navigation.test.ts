@@ -6,6 +6,7 @@ import {
   findActiveItem,
   findActiveTab,
   findSectionForPath,
+  isAdministrationPath,
   pickBottomNavItems,
   pushRecentRoute,
   searchNavigation
@@ -33,6 +34,14 @@ const sections: NavigationSection[] = [
 ]
 
 describe('navigation', () => {
+  it('keeps management context in classrooms and does not match unrelated prefixes', () => {
+    expect(isAdministrationPath('/sementinhas/turmas')).toBe(true)
+    expect(isAdministrationPath('/admin/pessoas')).toBe(true)
+    expect(isAdministrationPath('/operacao/estoque')).toBe(true)
+    expect(isAdministrationPath('/design-system')).toBe(true)
+    expect(isAdministrationPath('/sementinhas')).toBe(false)
+    expect(isAdministrationPath('/administrador')).toBe(false)
+  })
   it('chooses the bottom bar by role, in priority order', () => {
     expect(bottomNavProfile({ isAdminView: true, canOperateStore: true, caresForChildren: true })).toBe('admin')
     expect(bottomNavProfile({ isAdminView: false, canOperateStore: true, caresForChildren: true })).toBe('staff')
@@ -67,6 +76,8 @@ describe('navigation', () => {
     expect(searchNavigation(index, '  ')).toEqual([])
     expect(index.filter(entry => entry.to === '/operacao')).toHaveLength(1)
     expect(index.find(entry => entry.to === '/operacao/estoque')?.context).toBe('Operação da loja')
+    const savedIndex = buildSearchIndex([], [{ id: 'conteudo', label: 'Conteúdo', tabs: [{ label: 'Salvos', icon: 'i-bookmark', to: '/salvos', keywords: ['favoritos', 'mensagens salvas'] }] }])
+    expect(searchNavigation(savedIndex, 'favoritos').map(entry => entry.to)).toEqual(['/salvos'])
   })
 
   it('keeps recent routes unique, newest first and limited', () => {

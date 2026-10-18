@@ -8,6 +8,11 @@ const toast = useToast()
 const cellStore = useCellsStore()
 const inviteEmail = ref('')
 const removingId = ref('')
+const memberToRemove = ref<CellMember | null>(null)
+const removalOpen = computed({
+  get: () => Boolean(memberToRemove.value),
+  set: (open: boolean) => { if (!open) memberToRemove.value = null }
+})
 const invitationStatusLabels = { pending: 'Pendente', accepted: 'Aceito', declined: 'Recusado', revoked: 'Revogado' } as const
 
 function fail(caught: unknown, fallback: string) {
@@ -27,10 +32,10 @@ async function invite() {
 }
 
 async function remove(member: CellMember) {
-  if (!window.confirm(`Remover ${member.name} da célula?`)) return
   removingId.value = member.userId
   try {
     await cellStore.removeMember(props.detail.id, member.userId)
+    memberToRemove.value = null
     toast.add({ title: `${member.name.split(' ')[0]} saiu da célula`, color: 'neutral', icon: 'i-lucide-info' })
   } catch (caught) {
     fail(caught, 'Não foi possível remover.')
@@ -64,9 +69,10 @@ async function removeLeadership(member: CellMember) {
       :disabled="cellStore.demoMode"
     />
 
-    <form
+    <UForm
+      :state="{ inviteEmail }"
       class="mt-4 flex gap-2"
-      @submit.prevent="invite"
+      @submit="invite"
     >
       <UInput
         v-model="inviteEmail"
@@ -84,7 +90,7 @@ async function removeLeadership(member: CellMember) {
         :disabled="cellStore.demoMode || !inviteEmail.trim()"
         label="Convidar"
       />
-    </form>
+    </UForm>
 
     <ul class="mt-4 space-y-2">
       <li
@@ -127,7 +133,7 @@ async function removeLeadership(member: CellMember) {
             icon="i-lucide-user-minus"
             :aria-label="`Remover ${member.name}`"
             class="min-h-11 min-w-11 justify-center"
-            @click="remove(member)"
+            @click="memberToRemove = member"
           />
         </div>
       </li>
@@ -158,4 +164,29 @@ async function removeLeadership(member: CellMember) {
       Líderes não removem outros líderes; só a administração altera a liderança.
     </p>
   </UCard>
+  <UModal
+    v-model:open="removalOpen"
+    title="Remover membro da célula?"
+    :description="`${memberToRemove?.name || 'Esta pessoa'} deixará de participar desta célula.`"
+    :dismissible="!removingId"
+    :close="!removingId"
+  >
+    <template #footer>
+      <div class="flex w-full justify-end gap-2">
+        <UButton
+          color="neutral"
+          variant="outline"
+          label="Cancelar"
+          :disabled="Boolean(removingId)"
+          @click="removalOpen = false"
+        />
+        <UButton
+          color="error"
+          label="Remover membro"
+          :loading="Boolean(removingId)"
+          @click="memberToRemove && remove(memberToRemove)"
+        />
+      </div>
+    </template>
+  </UModal>
 </template>

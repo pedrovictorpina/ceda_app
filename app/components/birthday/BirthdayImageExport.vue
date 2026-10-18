@@ -104,32 +104,14 @@ onBeforeUnmount(() => image.release(pages.value))
     :ui="{ content: 'max-w-2xl', body: 'space-y-4' }"
   >
     <template #body>
-      <fieldset>
-        <legend class="mb-2 text-sm font-semibold">
-          Formato
-        </legend>
-        <div class="grid grid-cols-2 gap-2">
-          <button
-            v-for="item in formats"
-            :key="item.id"
-            type="button"
-            class="focus-ring flex min-h-16 items-center gap-3 rounded-2xl border p-3 text-left transition"
-            :class="format === item.id ? 'border-primary bg-primary/10 text-primary' : 'border-default hover:bg-elevated'"
-            :aria-pressed="format === item.id"
-            @click="format = item.id"
-          >
-            <span
-              class="shrink-0 rounded-md border-2 border-current"
-              :class="item.id === 'story' ? 'h-9 w-5' : 'h-5 w-9'"
-              aria-hidden="true"
-            />
-            <span class="min-w-0">
-              <span class="block font-semibold">{{ item.label }}</span>
-              <span class="block text-xs text-muted">{{ item.description }}</span>
-            </span>
-          </button>
-        </div>
-      </fieldset>
+      <URadioGroup
+        v-model="format"
+        :items="formats"
+        value-key="id"
+        legend="Formato"
+        variant="card"
+        :ui="{ fieldset: 'grid grid-cols-2 gap-2', item: 'min-h-16', legend: 'col-span-2' }"
+      />
 
       <div
         class="relative grid min-h-64 place-items-center overflow-hidden rounded-2xl border border-default bg-elevated/60 p-3"

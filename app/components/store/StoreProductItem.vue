@@ -11,7 +11,9 @@ const stockLabel = computed(() => props.product.stock_available === 1
 </script>
 
 <template>
-  <article
+  <UCard
+    as="article"
+    :ui="{ root: 'ring-0', body: 'contents' }"
     class="flex gap-3 rounded-2xl border bg-default p-2.5 transition-colors sm:flex-col sm:gap-0 sm:p-0 sm:overflow-hidden"
     :class="quantity ? 'border-primary/40 bg-primary/[0.03]' : 'border-default'"
   >
@@ -55,7 +57,7 @@ const stockLabel = computed(() => props.product.stock_available === 1
         {{ stockLabel }}
       </p>
 
-      <div class="mt-auto flex items-center justify-between gap-2 pt-2 sm:pt-4">
+      <div class="mt-auto flex flex-wrap items-center justify-between gap-2 pt-2 sm:pt-4">
         <p class="text-lg font-bold tabular-nums text-highlighted">
           {{ formatBRL(product.sale_price) }}
         </p>
@@ -77,5 +79,5 @@ const stockLabel = computed(() => props.product.stock_available === 1
         />
       </div>
     </div>
-  </article>
+  </UCard>
 </template>

@@ -59,6 +59,11 @@ const members = ref<ProfileRow[]>([])
 const roleRows = ref<Array<{ user_id: string, role: SystemRole }>>([])
 const pendingRequests = ref<PendingRequest[]>([])
 const canManageRoles = computed(() => auth.profile?.roles.includes('administrator') ?? false)
+const pendingRoleChange = ref<{ member: ProfileRow, role: 'administrator' | 'pastor', enabled: boolean } | null>(null)
+const roleConfirmationOpen = computed({
+  get: () => Boolean(pendingRoleChange.value),
+  set: (open: boolean) => { if (!open && !savingRole.value) pendingRoleChange.value = null }
+})
 
 const roleLabels: Record<SystemRole, string> = {
   administrator: 'Administrador',
@@ -259,6 +264,17 @@ function hasMemberRole(memberId: string, role: SystemRole) {
   return memberRoles.value.get(memberId)?.includes(role) ?? false
 }
 
+function requestElevatedRoleChange(member: ProfileRow, role: 'administrator' | 'pastor') {
+  feedback.value = ''
+  pendingRoleChange.value = { member, role, enabled: !hasMemberRole(member.id, role) }
+}
+
+async function confirmElevatedRoleChange() {
+  const change = pendingRoleChange.value
+  if (!change || savingRole.value || !canManageRoles.value) return
+  if (await updateSystemRole(change.member, change.role, change.enabled)) pendingRoleChange.value = null
+}
+
 async function updateSystemRole(member: ProfileRow, role: Exclude<SystemRole, 'member'>, enabled: boolean) {
   const { $supabase } = useNuxtApp()
   if (!$supabase) return
@@ -283,9 +299,11 @@ async function updateSystemRole(member: ProfileRow, role: Exclude<SystemRole, 'm
     feedback.value = enabled
       ? `${member.full_name} recebeu o papel de ${roleLabels[role]}. A pessoa precisará renovar a sessão para receber o novo acesso.`
       : `O papel de ${roleLabels[role]} foi removido de ${member.full_name}. As sessões existentes perderão o acesso ao renovar.`
+    return true
   } catch (error: unknown) {
     const safeError = error as RoleUpdateError
     feedback.value = safeError.data?.statusMessage || safeError.message || 'Não foi possível alterar o papel do usuário.'
+    return false
   } finally {
     savingRole.value = ''
   }
@@ -584,7 +602,7 @@ onMounted(loadPeople)
                 :label="hasMemberRole(member.id, 'pastor') ? 'Remover pastor' : 'Tornar pastor'"
                 :loading="savingRole === `${member.id}:pastor`"
                 :disabled="Boolean(savingRole) || member.id === auth.profile?.id"
-                @click="updateSystemRole(member, 'pastor', !hasMemberRole(member.id, 'pastor'))"
+                @click="requestElevatedRoleChange(member, 'pastor')"
               />
               <UButton
                 size="xs"
@@ -592,7 +610,7 @@ onMounted(loadPeople)
                 :label="hasMemberRole(member.id, 'administrator') ? 'Remover admin' : 'Tornar admin'"
                 :loading="savingRole === `${member.id}:administrator`"
                 :disabled="Boolean(savingRole) || member.id === auth.profile?.id"
-                @click="updateSystemRole(member, 'administrator', !hasMemberRole(member.id, 'administrator'))"
+                @click="requestElevatedRoleChange(member, 'administrator')"
               />
               <UButton
                 size="xs"
@@ -662,6 +680,53 @@ onMounted(loadPeople)
         />
       </div>
     </section>
+
+    <UModal
+      v-model:open="roleConfirmationOpen"
+      :title="pendingRoleChange?.enabled ? 'Conceder acesso de gestão?' : 'Remover acesso de gestão?'"
+      description="Confira a pessoa e o alcance da alteração antes de confirmar."
+      :dismissible="!savingRole"
+    >
+      <template #body>
+        <div
+          v-if="pendingRoleChange"
+          class="space-y-4"
+        >
+          <p><strong>{{ pendingRoleChange.member.full_name }}</strong><br><span class="break-all text-sm text-muted">{{ pendingRoleChange.member.email }}</span></p>
+          <p>Papel: <strong>{{ roleLabels[pendingRoleChange.role] }}</strong>.</p>
+          <p class="text-sm text-muted">
+            {{ pendingRoleChange.enabled
+              ? pendingRoleChange.role === 'administrator'
+                ? 'Essa pessoa poderá gerenciar a igreja e conceder ou remover permissões de outras pessoas.'
+                : 'Essa pessoa poderá acessar a gestão da igreja, consultar pessoas e administrar conteúdo e agenda.'
+              : 'Essa pessoa perderá o acesso correspondente a esse papel. Outras funções que ela possui serão mantidas.' }}
+            A mudança passa a valer ao renovar a sessão.
+          </p>
+          <UAlert
+            v-if="feedback"
+            color="neutral"
+            :description="feedback"
+          />
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex w-full flex-wrap justify-end gap-2">
+          <UButton
+            color="neutral"
+            variant="outline"
+            label="Voltar sem alterar"
+            :disabled="Boolean(savingRole)"
+            @click="pendingRoleChange = null"
+          />
+          <UButton
+            :color="pendingRoleChange?.enabled ? 'primary' : 'error'"
+            :label="pendingRoleChange?.enabled ? 'Confirmar acesso' : 'Confirmar remoção'"
+            :loading="Boolean(savingRole)"
+            @click="confirmElevatedRoleChange"
+          />
+        </div>
+      </template>
+    </UModal>
 
     <UModal
       v-model:open="detailsOpen"

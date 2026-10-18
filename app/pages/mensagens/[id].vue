@@ -1,116 +1,138 @@
 <script setup lang="ts">
-import { dailyMessage } from '~/data/contentCatalog'
 import type { PublishedEditorialItem } from '~/composables/usePublishedEditorial'
+import { editorialPreview } from '~/utils/editorial'
+import { formatEditorialDate } from '~/utils/churchAgenda'
 
 definePageMeta({ middleware: 'auth' })
 const route = useRoute()
+const { bySlug, loading, errorMessage } = usePublishedEditorial()
+const message = ref<PublishedEditorialItem | null>(null)
+const currentMessage = computed(() => message.value ? editorialPreview(message.value) : null)
+const savedMessages = useSavedMessages()
 const copied = ref(false)
-const publishedMessage = ref<PublishedEditorialItem | null>(null)
-const currentMessage = computed(() => publishedMessage.value
-  ? {
-      slug: publishedMessage.value.slug,
-      title: publishedMessage.value.title,
-      excerpt: publishedMessage.value.content.split(/\n\s*\n/)[0] || publishedMessage.value.content,
-      body: publishedMessage.value.content.split(/\n\s*\n/).filter(Boolean),
-      reference: 'Palavra do Dia',
-      author: 'Equipe pastoral CEDA'
-    }
-  : dailyMessage)
-const isKnownMessage = computed(() => Boolean(publishedMessage.value) || route.params.id === dailyMessage.slug || route.params.id === 'exemplo')
-useSeoMeta({ title: () => currentMessage.value.title, description: () => currentMessage.value.excerpt })
-
-onMounted(async () => {
-  publishedMessage.value = await usePublishedEditorial().bySlug('word_of_day', String(route.params.id))
+const shareError = ref('')
+useSeoMeta({ title: () => currentMessage.value?.title || 'Mensagem', description: () => currentMessage.value?.excerpt || '' })
+async function load() {
+  message.value = await bySlug('word_of_day', String(route.params.id))
+}
+onMounted(() => {
+  void load()
+  void savedMessages.load()
 })
-
+watch(() => route.params.id, load)
 async function shareMessage() {
-  const payload = { title: currentMessage.value.title, text: currentMessage.value.excerpt, url: window.location.href }
-  if (navigator.share) await navigator.share(payload)
-  else {
-    await navigator.clipboard.writeText(window.location.href)
-    copied.value = true
+  if (!currentMessage.value) return
+  shareError.value = ''
+  try {
+    const payload = { title: currentMessage.value.title, text: currentMessage.value.excerpt, url: window.location.href }
+    if (navigator.share) await navigator.share(payload)
+    else {
+      await navigator.clipboard.writeText(window.location.href)
+      copied.value = true
+    }
+  } catch (error) {
+    if (!(error instanceof Error && error.name === 'AbortError')) shareError.value = 'Não foi possível compartilhar. Você pode copiar o endereço desta página.'
   }
 }
 </script>
 
 <template>
-  <article
-    v-if="isKnownMessage"
-    class="mx-auto max-w-3xl pb-10"
-  >
-    <NuxtLink
-      to="/palavra-do-dia"
-      class="focus-ring mb-6 inline-flex items-center gap-2 rounded text-sm font-medium text-primary"
-    ><UIcon name="i-lucide-arrow-left" />Voltar para Palavra do Dia</NuxtLink>
-    <div class="rounded-2xl border border-default bg-gradient-to-br from-primary/10 via-default to-default p-6 sm:p-10">
-      <div class="flex flex-wrap items-center gap-3">
-        <UBadge label="Palavra do Dia" /><span class="text-sm text-muted">Conteúdo pastoral</span>
-      </div>
-      <p class="mt-8 text-sm font-semibold uppercase tracking-[0.18em] text-primary">
-        {{ currentMessage.reference }}
-      </p>
-      <h1 class="mt-3 text-4xl font-black tracking-tight sm:text-5xl">
-        {{ currentMessage.title }}
-      </h1>
-      <p class="mt-5 text-xl leading-8 text-muted">
-        {{ currentMessage.excerpt }}
-      </p>
-    </div>
-
-    <div class="mt-10 space-y-6 text-lg leading-8">
-      <p
-        v-for="paragraph in currentMessage.body"
-        :key="paragraph"
-      >
-        {{ paragraph }}
-      </p>
-    </div>
-
-    <blockquote class="my-10 border-l-4 border-primary bg-primary/5 p-5 text-lg italic leading-8">
-      “Lâmpada para os meus pés é tua palavra e luz para o meu caminho.”
-      <footer class="mt-2 text-sm not-italic text-muted">
-        {{ currentMessage.reference }}
-      </footer>
-    </blockquote>
-
-    <div class="flex flex-col justify-between gap-4 border-t border-default pt-6 sm:flex-row sm:items-center">
-      <div class="flex items-center gap-3">
-        <UAvatar fallback="EP" /><div>
-          <p class="font-medium">
-            {{ currentMessage.author }}
-          </p><p class="text-sm text-muted">
-            Publicado hoje
-          </p>
-        </div>
-      </div>
-      <UButton
-        color="neutral"
-        variant="outline"
-        :icon="copied ? 'i-lucide-check' : 'i-lucide-share-2'"
-        :label="copied ? 'Link copiado' : 'Compartilhar mensagem'"
-        @click="shareMessage"
-      />
-    </div>
-  </article>
-
-  <div
-    v-else
-    class="mx-auto max-w-xl py-16 text-center"
-  >
-    <UIcon
-      name="i-lucide-file-question-mark"
-      class="mx-auto size-12 text-muted"
-    />
-    <h1 class="mt-4 text-2xl font-bold">
-      Mensagem não encontrada
-    </h1>
-    <p class="mt-2 text-muted">
-      Este link pode ter expirado ou o conteúdo ainda não foi publicado.
-    </p>
+  <div class="mx-auto max-w-3xl pb-10">
     <UButton
-      class="mt-6"
       to="/palavra-do-dia"
-      label="Ir para a mensagem de hoje"
+      color="neutral"
+      variant="link"
+      icon="i-lucide-arrow-left"
+      label="Voltar para Palavra do Dia"
+      class="mb-6"
     />
+    <div
+      v-if="loading"
+      class="py-12 text-center text-muted"
+      role="status"
+    >
+      Carregando a mensagem…
+    </div>
+    <UAlert
+      v-else-if="errorMessage"
+      color="error"
+      variant="soft"
+      title="Mensagem indisponível"
+      :description="errorMessage"
+      :actions="[{ label: 'Tentar novamente', onClick: load }]"
+    />
+    <article v-else-if="currentMessage">
+      <div class="rounded-2xl border border-default bg-primary/5 p-6 sm:p-10">
+        <UBadge label="Palavra do Dia" />
+        <p class="mt-4 text-sm text-muted">
+          {{ formatEditorialDate(currentMessage.message_date) }} · {{ currentMessage.readTime }}
+        </p>
+        <h1 class="mt-3 break-words text-3xl font-black tracking-tight sm:text-5xl">
+          {{ currentMessage.title }}
+        </h1>
+        <p class="mt-5 whitespace-pre-line text-xl leading-8 text-muted">
+          {{ currentMessage.excerpt }}
+        </p>
+      </div>
+      <div class="mt-8 space-y-6 text-lg leading-8">
+        <p
+          v-for="(paragraph, index) in currentMessage.body"
+          :key="index"
+          class="whitespace-pre-line"
+        >
+          {{ paragraph }}
+        </p>
+      </div>
+      <div class="mt-10 flex flex-wrap gap-3 border-t border-default pt-6">
+        <UButton
+          color="neutral"
+          variant="outline"
+          :icon="copied ? 'i-lucide-check' : 'i-lucide-share-2'"
+          :label="copied ? 'Link copiado' : 'Compartilhar mensagem'"
+          @click="shareMessage"
+        />
+        <UButton
+          color="neutral"
+          :disabled="savedMessages.loading.value || savedMessages.saving.value"
+          :loading="savedMessages.saving.value"
+          :variant="savedMessages.isSaved(currentMessage.slug) ? 'soft' : 'outline'"
+          :label="savedMessages.isSaved(currentMessage.slug) ? 'Remover dos salvos' : 'Salvar para depois'"
+          icon="i-lucide-bookmark"
+          @click="savedMessages.toggle(currentMessage.slug)"
+        />
+        <UButton
+          to="/salvos"
+          variant="link"
+          label="Ver mensagens salvas"
+        />
+      </div>
+      <UAlert
+        v-if="savedMessages.errorMessage.value || shareError"
+        class="mt-4"
+        color="error"
+        variant="soft"
+        title="Não foi possível concluir a ação"
+        :description="savedMessages.errorMessage.value || shareError"
+      />
+    </article>
+    <UCard
+      v-else
+      class="py-10 text-center"
+    >
+      <UIcon
+        name="i-lucide-file-question-mark"
+        class="size-12 text-muted"
+      /><h1 class="mt-4 text-2xl font-bold">
+        Mensagem não encontrada
+      </h1>
+      <p class="mt-2 text-muted">
+        O conteúdo pode ter sido removido ou ainda não está publicado.
+      </p>
+      <UButton
+        class="mt-6"
+        to="/palavra-do-dia"
+        label="Ver a mensagem mais recente"
+      />
+    </UCard>
   </div>
 </template>

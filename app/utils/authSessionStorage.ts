@@ -1,5 +1,9 @@
 export const REMEMBER_ACCESS_KEY = 'ceda.auth.remember-access'
 
+// A PKCE verifier alone is not a session. Email confirmation/recovery opens in
+// another tab, so this short-lived SDK key must be shared even for tab-only login.
+const isPkceVerifier = (key: string) => key.endsWith('-code-verifier')
+
 export interface BrowserStorage {
   getItem(key: string): string | null
   setItem(key: string, value: string): void
@@ -45,6 +49,7 @@ export class NativeRememberedSessionStorage {
     await this.ready()
     if (value !== this.remembered) {
       for (const key of this.trackedKeys) {
+        if (isPkceVerifier(key)) continue
         const session = this.remembered
           ? await this.nativeStorage.getItem(key)
           : this.tabStorage.getItem(key)
@@ -65,7 +70,7 @@ export class NativeRememberedSessionStorage {
   async getItem(key: string): Promise<string | null> {
     await this.ready()
     this.trackedKeys.add(key)
-    if (!this.remembered) return this.tabStorage.getItem(key)
+    if (!this.remembered && !isPkceVerifier(key)) return this.tabStorage.getItem(key)
 
     const nativeSession = await this.nativeStorage.getItem(key)
     if (nativeSession !== null) return nativeSession
@@ -84,7 +89,7 @@ export class NativeRememberedSessionStorage {
   async setItem(key: string, value: string): Promise<void> {
     await this.ready()
     this.trackedKeys.add(key)
-    if (this.remembered) {
+    if (this.remembered || isPkceVerifier(key)) {
       await this.nativeStorage.setItem(key, value)
       this.durableStorage.removeItem(key)
       this.tabStorage.removeItem(key)
@@ -131,6 +136,7 @@ export class RememberedSessionStorage {
     const target = value ? this.durableStorage : this.tabStorage
 
     for (const key of this.trackedKeys) {
+      if (isPkceVerifier(key)) continue
       const storedValue = source.getItem(key)
       if (storedValue !== null) target.setItem(key, storedValue)
       source.removeItem(key)
@@ -142,6 +148,12 @@ export class RememberedSessionStorage {
 
   getItem(key: string): string | null {
     this.trackedKeys.add(key)
+    if (isPkceVerifier(key)) {
+      const verifier = this.durableStorage.getItem(key) ?? this.tabStorage.getItem(key)
+      if (verifier !== null) this.durableStorage.setItem(key, verifier)
+      this.tabStorage.removeItem(key)
+      return verifier
+    }
     const value = this.activeStorage.getItem(key)
     if (value !== null || !this.remembered) return value
 
@@ -158,6 +170,11 @@ export class RememberedSessionStorage {
 
   setItem(key: string, value: string): void {
     this.trackedKeys.add(key)
+    if (isPkceVerifier(key)) {
+      this.durableStorage.setItem(key, value)
+      this.tabStorage.removeItem(key)
+      return
+    }
     this.activeStorage.setItem(key, value)
     this.inactiveStorage.removeItem(key)
   }

@@ -4,7 +4,11 @@ const optIn = defineModel<boolean>({ required: true })
 </script>
 
 <template>
-  <div class="mt-4 rounded-xl border border-default bg-elevated/40 p-4">
+  <UCard
+    as="div"
+    :ui="{ root: 'ring-0', body: 'contents' }"
+    class="mt-4 rounded-xl border border-default bg-elevated/40 p-4"
+  >
     <USwitch
       v-model="optIn"
       :disabled="!available"
@@ -25,7 +29,7 @@ const optIn = defineModel<boolean>({ required: true })
     >
       Informe sua data de nascimento acima para aparecer entre os aniversariantes.
     </p>
-    <NuxtLink
+    <ULink
       v-else
       to="/aniversariantes"
       class="focus-ring mt-3 inline-flex min-h-11 items-center gap-1.5 rounded-md text-sm font-medium text-primary hover:underline"
@@ -35,6 +39,6 @@ const optIn = defineModel<boolean>({ required: true })
         class="size-4"
       />
       Ver aniversariantes
-    </NuxtLink>
-  </div>
+    </ULink>
+  </UCard>
 </template>

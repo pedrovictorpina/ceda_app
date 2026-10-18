@@ -2,6 +2,7 @@
 import { validateRegistration, type RegistrationErrors, type RegistrationInput } from '~/utils/registration'
 import { MIN_BIRTH_DATE, todayInTimeZone } from '~/utils/birthdays'
 import { invitationDescription, isRegistrationInvitation } from '~/utils/invitations'
+import { authErrorMessage, authFlowLink, safeAuthReturnTo } from '~/utils/authFlow'
 
 definePageMeta({ layout: 'public' })
 useSeoMeta({ title: 'Criar cadastro' })
@@ -24,29 +25,41 @@ const pending = ref(false)
 const feedback = ref<{ color: 'success' | 'error' | 'warning', title: string, description: string } | null>(null)
 const passwordVisible = ref(false)
 const confirmationVisible = ref(false)
+const emailConfirmationRequired = ref(false)
 const invitationSource = computed(() => route.query.origem === 'familia' ? 'family' : 'general')
 const hasInvitation = computed(() => isRegistrationInvitation(route.query))
+const destination = computed(() => safeAuthReturnTo(route.query.next))
 
-onMounted(() => auth.hydrate())
+onMounted(async () => {
+  try {
+    await auth.hydrate()
+  } catch (error) {
+    feedback.value = { color: 'warning', title: 'Não foi possível verificar seu acesso', description: authErrorMessage(error, 'session') }
+  }
+})
 
 async function submit() {
+  if (pending.value) return
   errors.value = validateRegistration(form)
   feedback.value = null
   if (Object.keys(errors.value).length) return
   if (!auth.configured) {
-    feedback.value = { color: 'warning', title: 'Supabase não configurado', description: 'O cadastro não foi enviado. Configure as chaves públicas locais conforme o README.' }
+    feedback.value = { color: 'warning', title: 'Cadastro temporariamente indisponível', description: 'Seus dados não foram enviados. Tente novamente mais tarde ou fale com a recepção.' }
     return
   }
 
   pending.value = true
   try {
-    const result = await auth.signUp(form)
+    const result = await auth.signUp(form, destination.value)
+    emailConfirmationRequired.value = result.requiresEmailConfirmation
     feedback.value = result.requiresEmailConfirmation
-      ? { color: 'success', title: 'Confira seu e-mail', description: 'Enviamos uma confirmação. Depois de confirmar, volte para entrar.' }
+      ? { color: 'success', title: 'Confira seu e-mail para continuar', description: 'Se o cadastro precisar de confirmação, você receberá um link. Confira a caixa de entrada e o spam; abra o link neste navegador. Se já possui conta, volte para entrar ou recupere sua senha.' }
       : { color: 'success', title: 'Cadastro criado', description: 'Sua conta está pronta. Você já pode acessar a área de membros.' }
-    if (!result.requiresEmailConfirmation) await navigateTo('/inicio')
+    form.password = ''
+    form.passwordConfirmation = ''
+    if (!result.requiresEmailConfirmation) await navigateTo(destination.value)
   } catch (error) {
-    feedback.value = { color: 'error', title: 'Não foi possível criar o cadastro', description: error instanceof Error ? error.message : 'Tente novamente.' }
+    feedback.value = { color: 'error', title: 'Não foi possível criar o cadastro', description: authErrorMessage(error, 'signUp') }
   } finally {
     pending.value = false
   }
@@ -69,28 +82,57 @@ async function submit() {
           Criar cadastro
         </h1>
         <p class="mt-1 text-sm text-muted">
-          Preencha seus dados para solicitar acesso à comunidade.
+          Crie sua conta para participar da comunidade. Se for necessário confirmar o e-mail, explicamos o próximo passo após o envio.
         </p>
       </template>
 
-      <form
+      <UAlert
+        v-if="feedback"
+        :color="feedback.color"
+        variant="subtle"
+        :title="feedback.title"
+        :description="feedback.description"
+        class="mb-4"
+      />
+      <div
+        v-if="emailConfirmationRequired"
+        class="space-y-4"
+      >
+        <p class="text-sm leading-6 text-muted">
+          O endereço informado foi <strong class="break-all">{{ form.email }}</strong>.
+        </p>
+        <UButton
+          :to="authFlowLink('/entrar', destination)"
+          block
+          label="Já confirmei meu e-mail — entrar"
+        />
+        <UButton
+          :to="authFlowLink('/recuperar-senha', destination)"
+          block
+          color="neutral"
+          variant="outline"
+          label="Já tenho conta e esqueci a senha"
+        />
+        <UButton
+          block
+          variant="link"
+          label="Corrigir o e-mail informado"
+          @click="emailConfirmationRequired = false; feedback = null"
+        />
+      </div>
+      <UForm
+        v-else
+        :state="form"
         class="space-y-4"
         novalidate
-        @submit.prevent="submit"
+        @submit="submit"
       >
         <UAlert
           v-if="!auth.loading && !auth.configured"
           color="warning"
           variant="subtle"
-          title="Ambiente sem Supabase"
-          description="O formulário pode ser revisado, mas não envia dados enquanto as chaves públicas não estiverem configuradas."
-        />
-        <UAlert
-          v-if="feedback"
-          :color="feedback.color"
-          variant="subtle"
-          :title="feedback.title"
-          :description="feedback.description"
+          title="Cadastro temporariamente indisponível"
+          description="Você pode conhecer a igreja e consultar os contatos sem criar uma conta. Tente novamente mais tarde."
         />
         <UAlert
           v-if="hasInvitation"
@@ -209,11 +251,11 @@ async function submit() {
           <UCheckbox v-model="form.acceptedPrivacy">
             <template #label>
               Li e aceito a
-              <NuxtLink
+              <ULink
                 to="/privacidade"
                 target="_blank"
                 class="font-medium text-primary hover:underline"
-              >Política de Privacidade</NuxtLink>
+              >Política de Privacidade</ULink>
             </template>
           </UCheckbox>
         </UFormField>
@@ -221,16 +263,17 @@ async function submit() {
           type="submit"
           block
           :loading="pending"
+          :disabled="!auth.configured"
           label="Criar cadastro"
         />
         <p class="text-center text-sm text-muted">
           Já possui cadastro?
-          <NuxtLink
-            to="/entrar"
+          <ULink
+            :to="authFlowLink('/entrar', destination)"
             class="focus-ring rounded-sm font-medium text-primary hover:underline"
-          >Voltar para entrar</NuxtLink>
+          >Voltar para entrar</ULink>
         </p>
-      </form>
+      </UForm>
     </UCard>
   </section>
 </template>

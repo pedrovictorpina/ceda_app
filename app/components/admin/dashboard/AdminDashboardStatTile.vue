@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ULink } from '#components'
 import type { SectionStatus, TileTone } from '~/utils/adminDashboard'
 
 const props = withDefaults(defineProps<{
@@ -44,8 +45,9 @@ const shownTone = computed<TileTone>(() => (props.status === 'error' ? 'warning'
 </script>
 
 <template>
-  <component
-    :is="to ? resolveComponent('NuxtLink') : 'div'"
+  <UCard
+    :ui="{ root: 'ring-0', body: 'contents' }"
+    :as="to ? ULink : 'div'"
     :to="to"
     class="group flex min-h-28 min-w-0 flex-col rounded-2xl border border-default bg-default p-4 shadow-sm transition"
     :class="to ? 'focus-ring hover:border-primary/40 hover:bg-primary/5' : ''"
@@ -91,5 +93,5 @@ const shownTone = computed<TileTone>(() => (props.status === 'error' ? 'warning'
       />
       <span class="min-w-0">{{ shownDetail }}</span>
     </p>
-  </component>
+  </UCard>
 </template>

@@ -37,9 +37,11 @@ async function create() {
       v-if="detail.polls.length"
       class="grid gap-4 lg:grid-cols-2"
     >
-      <article
+      <UCard
         v-for="item in detail.polls"
         :key="item.id"
+        as="article"
+        :ui="{ root: 'ring-0', body: 'contents' }"
         class="rounded-2xl border border-default p-4"
       >
         <div class="flex items-start justify-between gap-2">
@@ -54,9 +56,11 @@ async function create() {
           </UBadge>
         </div>
         <div class="mt-3 space-y-2">
-          <button
+          <UButton
             v-for="option in item.options"
             :key="option.id"
+            color="neutral"
+            variant="ghost"
             type="button"
             class="focus-ring flex min-h-11 w-full items-center justify-between rounded-xl border border-default px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-70"
             :disabled="cellStore.demoMode || item.status !== 'published' || Boolean(item.selectedOptionId) || canManage"
@@ -69,7 +73,7 @@ async function create() {
               name="i-lucide-check-circle-2"
               class="text-primary"
             />
-          </button>
+          </UButton>
         </div>
         <div
           v-if="canManage"
@@ -94,7 +98,7 @@ async function create() {
             @click="run(() => cellStore.setPollStatus(detail.id, item.id, 'closed'), 'Enquete encerrada')"
           />
         </div>
-      </article>
+      </UCard>
     </div>
     <p
       v-else
@@ -103,10 +107,11 @@ async function create() {
       Nenhuma enquete disponível.
     </p>
 
-    <form
+    <UForm
       v-if="canManage"
+      :state="draft"
       class="mt-5 space-y-3 border-t border-default pt-4"
-      @submit.prevent="create"
+      @submit="create"
     >
       <p class="text-sm font-semibold">
         Nova enquete
@@ -139,6 +144,6 @@ async function create() {
         :disabled="cellStore.demoMode"
         label="Criar rascunho"
       />
-    </form>
+    </UForm>
   </UCard>
 </template>

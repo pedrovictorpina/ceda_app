@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+
 definePageMeta({ middleware: ['auth', 'operations'] })
 useSeoMeta({ title: 'Relatórios da Loja' })
 
@@ -91,6 +93,13 @@ const loading = ref(true)
 const exporting = ref(false)
 const feedback = ref('')
 const reportPanel = ref<HTMLElement | null>(null)
+const orderColumns: TableColumn<StoreOrder>[] = [
+  { accessorKey: 'order_number', header: 'Pedido' },
+  { accessorKey: 'created_at', header: 'Data' },
+  { accessorKey: 'store_order_items', header: 'Itens' },
+  { accessorKey: 'status', header: 'Status' },
+  { accessorKey: 'total_amount', header: 'Total', meta: { class: { th: 'text-right', td: 'text-right' } } }
+]
 
 function isoDate(date: Date) {
   const year = date.getFullYear()
@@ -792,50 +801,34 @@ watch(selectedCashDayId, () => {
               </p>
             </div>
           </template>
-          <div
+          <UTable
             v-if="orders.length"
-            class="overflow-x-auto"
+            :data="orders"
+            :columns="orderColumns"
+            :get-row-id="order => order.id"
+            caption="Pedidos do período"
+            :ui="{ base: 'min-w-[48rem]', caption: 'sr-only', th: 'px-2 py-3 text-xs uppercase tracking-wide', td: 'px-2 py-3' }"
           >
-            <table class="min-w-[48rem] text-left text-sm">
-              <thead class="border-b border-default text-xs uppercase tracking-wide text-muted">
-                <tr>
-                  <th class="px-2 py-3 font-medium">
-                    Pedido
-                  </th><th class="px-2 py-3 font-medium">
-                    Data
-                  </th><th class="px-2 py-3 font-medium">
-                    Itens
-                  </th><th class="px-2 py-3 font-medium">
-                    Status
-                  </th><th class="px-2 py-3 text-right font-medium">
-                    Total
-                  </th>
-                </tr>
-              </thead><tbody>
-                <tr
-                  v-for="order in orders"
-                  :key="order.id"
-                  class="border-b border-default/60 transition-colors hover:bg-elevated/60 last:border-0"
-                >
-                  <td class="px-2 py-3 font-semibold">
-                    #{{ order.order_number }}
-                  </td><td class="whitespace-nowrap px-2 py-3 text-muted">
-                    {{ formatDateTime(order.created_at) }}
-                  </td><td class="max-w-72 px-2 py-3 text-muted">
-                    {{ order.store_order_items.map(item => `${relationName(item.product) || 'Produto'} × ${formatQuantity(item.quantity)}`).join(', ') }}
-                  </td><td class="px-2 py-3">
-                    <UBadge
-                      :color="statusColors[order.status]"
-                      variant="subtle"
-                      :label="statusLabels[order.status]"
-                    />
-                  </td><td class="whitespace-nowrap px-2 py-3 text-right font-semibold">
-                    {{ formatMoney(order.total_amount) }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+            <template #order_number-cell="{ row }">
+              <span class="font-semibold">#{{ row.original.order_number }}</span>
+            </template>
+            <template #created_at-cell="{ row }">
+              {{ formatDateTime(row.original.created_at) }}
+            </template>
+            <template #store_order_items-cell="{ row }">
+              <span class="block max-w-72 whitespace-normal">{{ row.original.store_order_items.map(item => `${relationName(item.product) || 'Produto'} × ${formatQuantity(item.quantity)}`).join(', ') }}</span>
+            </template>
+            <template #status-cell="{ row }">
+              <UBadge
+                :color="statusColors[row.original.status]"
+                variant="subtle"
+                :label="statusLabels[row.original.status]"
+              />
+            </template>
+            <template #total_amount-cell="{ row }">
+              <span class="font-semibold">{{ formatMoney(row.original.total_amount) }}</span>
+            </template>
+          </UTable>
           <p
             v-else
             class="py-8 text-center text-sm text-muted"

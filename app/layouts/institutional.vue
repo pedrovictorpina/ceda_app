@@ -1,6 +1,17 @@
 <script setup lang="ts">
+import { authErrorMessage } from '~/utils/authFlow'
+
 const auth = useAuthStore()
-const route = useRoute()
+const accessError = ref('')
+
+async function verifyAccess() {
+  accessError.value = ''
+  try {
+    await auth.hydrate()
+  } catch (error) {
+    accessError.value = authErrorMessage(error, 'session')
+  }
+}
 
 const publicLinks = [
   { label: 'Sobre nós', to: '/sobre' },
@@ -9,7 +20,7 @@ const publicLinks = [
 ]
 
 onMounted(async () => {
-  if (auth.loading) await auth.hydrate()
+  if (auth.loading) await verifyAccess()
 })
 </script>
 
@@ -25,20 +36,15 @@ onMounted(async () => {
     <header class="sticky top-0 z-40 border-b border-default bg-default/95 backdrop-blur">
       <div class="mx-auto flex min-h-16 max-w-6xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2">
         <BrandLogo to="/" />
-        <nav
+        <div
           class="order-3 flex w-full gap-1 overflow-x-auto pb-1 sm:order-none sm:w-auto sm:flex-1 sm:pb-0"
-          aria-label="Navegação institucional"
         >
-          <NuxtLink
-            v-for="link in publicLinks"
-            :key="link.to"
-            :to="link.to"
-            class="focus-ring shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition hover:bg-elevated"
-            :class="route.path === link.to ? 'bg-primary/10 text-primary' : 'text-muted'"
-          >
-            {{ link.label }}
-          </NuxtLink>
-        </nav>
+          <UNavigationMenu
+            :items="publicLinks"
+            aria-label="Navegação institucional"
+            :ui="{ link: 'min-h-11 whitespace-nowrap' }"
+          />
+        </div>
         <div class="ml-auto flex items-center gap-2">
           <UColorModeButton />
           <UButton
@@ -48,6 +54,20 @@ onMounted(async () => {
         </div>
       </div>
     </header>
-    <main><slot /></main>
+    <main>
+      <div
+        v-if="accessError"
+        class="mx-auto max-w-6xl px-4 pt-5"
+      >
+        <UAlert
+          color="warning"
+          variant="soft"
+          title="Você pode continuar consultando as informações públicas"
+          :description="accessError"
+          :actions="[{ label: 'Verificar novamente', onClick: verifyAccess }]"
+        />
+      </div>
+      <slot />
+    </main>
   </div>
 </template>

@@ -41,6 +41,7 @@ const closingMode = ref<'manual' | 'automatic'>('manual')
 const autoCloseTime = ref('22:00')
 const confirmingClose = ref(false)
 const cancellingOrderId = ref<string | null>(null)
+const fulfillingOrderId = ref<string | null>(null)
 const paymentMethods = reactive<Record<string, string>>({})
 const loading = ref(true)
 const saving = ref(false)
@@ -169,17 +170,18 @@ async function changeOrderStatus(order: StoreOrder, status: 'ready_for_pickup' |
   const update = status === 'ready_for_pickup' && cashFlowAvailable.value
     ? { status, payment_method: paymentMethods[order.id] || null }
     : { status }
-  const { error } = await $supabase.from('store_orders').update(update).eq('id', order.id)
+  const { data, error } = await $supabase.from('store_orders').update(update).eq('id', order.id).eq('status', order.status).select('id').maybeSingle()
   saving.value = false
-  feedback.value = error
-    ? 'Não foi possível atualizar o pedido. Confirme seu papel e o status atual.'
+  feedback.value = error || !data
+    ? 'O pedido não foi atualizado. Ele pode ter sido atendido por outra pessoa; atualize a lista antes de tentar novamente.'
     : status === 'ready_for_pickup'
       ? `Pedido #${order.order_number} confirmado para retirada.`
       : status === 'fulfilled'
         ? `Pedido #${order.order_number} entregue e baixado do estoque.`
         : `Pedido #${order.order_number} cancelado e estoque liberado.`
   cancellingOrderId.value = null
-  if (!error) await loadOperation()
+  fulfillingOrderId.value = null
+  if (!error && data) await loadOperation()
 }
 
 onMounted(() => {
@@ -278,9 +280,11 @@ onUnmounted(() => {
           Produtos disponíveis para venda hoje: {{ cashDayProductIds.length }} selecionado(s).
         </p>
         <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          <button
+          <UButton
             v-for="product in activeProducts"
             :key="product.id"
+            color="neutral"
+            variant="ghost"
             type="button"
             class="focus-ring flex items-center justify-between gap-3 rounded-xl border border-default p-3 text-left hover:bg-elevated"
             :disabled="saving || product.stock_available <= 0"
@@ -292,7 +296,7 @@ onUnmounted(() => {
               :name="cashDayProductIds.includes(product.id) ? 'i-lucide-circle-check' : 'i-lucide-circle-plus'"
               class="size-5 shrink-0 text-primary"
             />
-          </button>
+          </UButton>
         </div>
         <div class="flex flex-wrap items-end gap-3 border-t border-default pt-4">
           <UFormField label="Encerramento">
@@ -519,13 +523,39 @@ onUnmounted(() => {
               </div>
             </div>
             <UButton
-              v-if="order.status === 'ready_for_pickup' && canFulfillOrders"
+              v-if="order.status === 'ready_for_pickup' && canFulfillOrders && fulfillingOrderId !== order.id"
               block
               :loading="saving"
-              label="Entregar e dar baixa"
+              label="Conferir entrega"
               icon="i-lucide-check"
-              @click="changeOrderStatus(order, 'fulfilled')"
+              @click="fulfillingOrderId = order.id"
             />
+            <div
+              v-if="fulfillingOrderId === order.id"
+              class="rounded-xl border border-primary/30 bg-primary/5 p-3"
+            >
+              <p class="font-semibold">
+                Confirmar entrega #{{ order.order_number }}?
+              </p>
+              <p class="mt-1 text-sm text-muted">
+                Confira os itens acima{{ order.buyer_name ? ` e o nome: ${order.buyer_name}` : '' }}. Confirme depois de entregar; isso conclui o pedido e dá baixa no estoque.
+              </p>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <UButton
+                  :label="`Confirmar entrega #${order.order_number}`"
+                  :loading="saving"
+                  icon="i-lucide-check"
+                  @click="changeOrderStatus(order, 'fulfilled')"
+                />
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  label="Voltar"
+                  :disabled="saving"
+                  @click="fulfillingOrderId = null"
+                />
+              </div>
+            </div>
           </template>
         </UCard>
         <UCard

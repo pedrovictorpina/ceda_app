@@ -8,6 +8,7 @@ const sections: NavigationSection[] = [
     label: 'Conteúdo',
     tabs: [
       { label: 'Palavra do Dia', icon: 'i-lucide-book-open-text', to: '/palavra-do-dia' },
+      { label: 'Salvos', icon: 'i-lucide-bookmark', to: '/salvos', keywords: ['mensagens salvas', 'favoritos'] },
       { label: 'Notícias', icon: 'i-lucide-newspaper', to: '/noticias' },
       { label: 'Galeria', icon: 'i-lucide-images', to: '/galeria' },
       { label: 'Social', icon: 'i-lucide-square-play', to: '/social' }
@@ -44,18 +45,17 @@ const sections: NavigationSection[] = [
 
 const memberItems: NavigationItem[] = [
   { label: 'Início', icon: 'i-lucide-house', to: '/inicio', group: 'main' },
-  { label: 'Conteúdo', icon: 'i-lucide-book-open-text', to: '/palavra-do-dia', group: 'main', matches: ['/noticias', '/galeria', '/social'], keywords: ['Palavra do Dia', 'Notícias', 'Galeria', 'Social'] },
+  { label: 'Conteúdo', icon: 'i-lucide-book-open-text', to: '/palavra-do-dia', group: 'main', matches: ['/salvos', '/noticias', '/galeria', '/social'], keywords: ['Palavra do Dia', 'Notícias', 'Galeria', 'Social', 'mensagens salvas', 'favoritos'] },
   { label: 'Eventos', icon: 'i-lucide-calendar-days', to: '/eventos', group: 'main', keywords: ['agenda'] },
   { label: 'Loja', icon: 'i-lucide-shopping-bag', to: '/loja', group: 'main', keywords: ['pedido', 'cantina'] },
   { label: 'Sementinhas', icon: 'i-lucide-sprout', to: '/sementinhas', group: 'main', requires: 'guardian', keywords: ['crianças', 'filhos', 'turmas', 'check-in'] },
-  { label: 'Células', icon: 'i-lucide-house-heart', to: '/celulas', group: 'community' },
-  { label: 'Comunidade', icon: 'i-lucide-users', to: '/comunidade', group: 'community' },
-  { label: 'Feed', icon: 'i-lucide-messages-square', to: '/feed', group: 'community' },
+  { label: 'Células', icon: 'i-lucide-house-heart', to: '/celulas', group: 'community', keywords: ['grupo pequeno', 'encontros nas casas', 'líder', 'participar'] },
+  { label: 'Grupos e ministérios', shortLabel: 'Grupos', icon: 'i-lucide-users', to: '/comunidade', group: 'community', keywords: ['comunidade', 'servir', 'participar', 'equipe'] },
+  { label: 'Mural da comunidade', shortLabel: 'Mural', icon: 'i-lucide-messages-square', to: '/feed', group: 'community', keywords: ['feed', 'conversas', 'comentários'] },
   { label: 'Oração', icon: 'i-lucide-heart', to: '/oracao', group: 'community', keywords: ['motivos de oração', 'pedidos'] },
   { label: 'Aniversariantes', icon: 'i-lucide-cake', to: '/aniversariantes', group: 'community' },
   { label: 'A Igreja', icon: 'i-lucide-landmark', to: '/horarios-de-culto', group: 'church', matches: ['/sobre', '/contato', '/campanhas'], keywords: ['Horários de Culto', 'Sobre Nós', 'Fale Conosco', 'Campanhas', 'contato'] },
-  { label: 'Operação da loja', shortLabel: 'Operação', icon: 'i-lucide-package-check', to: '/operacao', group: 'operations', requires: 'store_operator', keywords: ['caixa', 'estoque', 'relatórios', 'atendimento'] },
-  { label: 'Design System', icon: 'i-lucide-palette', to: '/design-system', group: 'more', webOnly: true }
+  { label: 'Operação da loja', shortLabel: 'Operação', icon: 'i-lucide-package-check', to: '/operacao', group: 'operations', requires: 'store_operator', keywords: ['caixa', 'estoque', 'relatórios', 'atendimento'] }
 ]
 
 const administratorItems: NavigationItem[] = [
@@ -65,7 +65,8 @@ const administratorItems: NavigationItem[] = [
   { label: 'Conteúdo e avisos', icon: 'i-lucide-newspaper', to: '/admin/conteudo', group: 'administration', requires: 'administrator' },
   { label: 'Auditoria', icon: 'i-lucide-shield-check', to: '/admin/auditoria', group: 'administration', requires: 'administrator' },
   { label: 'Sementinhas', icon: 'i-lucide-sprout', to: '/sementinhas/turmas', group: 'administration', requires: 'children_staff', keywords: ['turmas', 'crianças'] },
-  { label: 'Operação da loja', shortLabel: 'Operação', icon: 'i-lucide-package-check', to: '/operacao', group: 'operations', requires: 'administrator', keywords: ['caixa', 'estoque', 'relatórios', 'pedidos'] }
+  { label: 'Operação da loja', shortLabel: 'Operação', icon: 'i-lucide-package-check', to: '/operacao', group: 'operations', requires: 'administrator', keywords: ['caixa', 'estoque', 'relatórios', 'pedidos'] },
+  { label: 'Padrões da interface', icon: 'i-lucide-palette', to: '/design-system', group: 'administration', requires: 'administrator', webOnly: true }
 ]
 
 export function useAppNavigation() {

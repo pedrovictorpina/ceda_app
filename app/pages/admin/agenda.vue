@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { EventKind, ReminderLead } from '~/types/domain'
+import { downloadEventCalendar, reminderDate } from '~/utils/churchAgenda'
 
 definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] })
 useSeoMeta({ title: 'Agenda e eventos' })
@@ -16,6 +17,7 @@ interface ChurchEvent {
   community_id: string | null
   ministry_id: string | null
   cancelled_at: string | null
+  public_visibility: boolean
   created_at: string
 }
 
@@ -36,6 +38,13 @@ const auth = useAuthStore()
 const loading = ref(true)
 const saving = ref(false)
 const editorOpen = ref(false)
+const eventToCancel = ref<ChurchEvent | null>(null)
+const cancelOpen = computed({
+  get: () => Boolean(eventToCancel.value),
+  set: (open: boolean) => {
+    if (!open && !saving.value) eventToCancel.value = null
+  }
+})
 const editingId = ref<string | null>(null)
 const feedback = ref('')
 const errorMessage = ref('')
@@ -43,6 +52,8 @@ const events = ref<ChurchEvent[]>([])
 const profiles = ref<ProfileOption[]>([])
 const reminders = ref<ReminderRow[]>([])
 const showCancelled = ref(false)
+let accountRevision = 0
+const isCurrentAccount = (revision: number, userId: string) => revision === accountRevision && auth.profile?.id === userId
 
 const form = reactive({
   title: '',
@@ -51,9 +62,10 @@ const form = reactive({
   endsAt: '',
   location: '',
   description: '',
+  publicVisibility: false,
   responsibleId: '',
   remindWeek: false,
-  remindDay: true,
+  remindDay: false,
   remindHour: false
 })
 
@@ -117,9 +129,7 @@ function selectedReminderLeads(): ReminderLead[] {
 }
 
 function reminderSchedule(startsAt: string, lead: ReminderLead) {
-  const date = new Date(startsAt)
-  const milliseconds = lead === 'week' ? 7 * 24 * 60 * 60 * 1000 : lead === 'day' ? 24 * 60 * 60 * 1000 : 60 * 60 * 1000
-  return new Date(date.getTime() - milliseconds).toISOString()
+  return reminderDate(startsAt, lead)
 }
 
 function resetForm() {
@@ -131,14 +141,30 @@ function resetForm() {
     endsAt: '',
     location: '',
     description: '',
+    publicVisibility: false,
     responsibleId: auth.profile?.id || '',
     remindWeek: false,
-    remindDay: true,
+    remindDay: false,
     remindHour: false
   })
 }
 
+watch(() => auth.profile?.id, () => {
+  accountRevision += 1
+  editorOpen.value = false
+  eventToCancel.value = null
+  saving.value = false
+  loading.value = false
+  events.value = []
+  profiles.value = []
+  reminders.value = []
+  feedback.value = ''
+  errorMessage.value = ''
+  resetForm()
+}, { flush: 'sync' })
+
 function openCreate() {
+  if (!auth.profile) return
   resetForm()
   feedback.value = ''
   errorMessage.value = ''
@@ -146,6 +172,7 @@ function openCreate() {
 }
 
 function editEvent(event: ChurchEvent) {
+  if (!auth.profile) return
   const eventReminderLeads = new Set((remindersByEvent.value.get(event.id) || []).map(reminder => reminder.lead))
   editingId.value = event.id
   Object.assign(form, {
@@ -155,6 +182,7 @@ function editEvent(event: ChurchEvent) {
     endsAt: toLocalInput(event.ends_at),
     location: event.location || '',
     description: event.description || '',
+    publicVisibility: Boolean(event.public_visibility && event.kind === 'service' && !event.community_id && !event.ministry_id),
     responsibleId: event.responsible_id,
     remindWeek: eventReminderLeads.has('week'),
     remindDay: eventReminderLeads.has('day'),
@@ -166,6 +194,8 @@ function editEvent(event: ChurchEvent) {
 }
 
 async function loadAgenda() {
+  const userId = auth.profile?.id
+  const revision = accountRevision
   const { $supabase } = useNuxtApp()
   if (!$supabase || !auth.profile) {
     errorMessage.value = 'O serviço de dados ou a sessão atual não está disponível.'
@@ -176,10 +206,11 @@ async function loadAgenda() {
   loading.value = true
   errorMessage.value = ''
   const [eventsResult, profilesResult, remindersResult] = await Promise.all([
-    $supabase.from('events').select('id, title, kind, starts_at, ends_at, location, description, responsible_id, community_id, ministry_id, cancelled_at, created_at').order('starts_at', { ascending: true }).limit(250),
+    $supabase.from('events').select('id, title, kind, starts_at, ends_at, location, description, responsible_id, community_id, ministry_id, cancelled_at, public_visibility, created_at').order('starts_at', { ascending: true }).limit(250),
     $supabase.from('profiles').select('id, full_name, email').order('full_name', { ascending: true }).limit(250),
-    $supabase.from('event_reminders').select('event_id, lead, scheduled_for, cancelled_at').eq('user_id', auth.profile.id)
+    $supabase.from('event_reminders').select('event_id, lead, scheduled_for, cancelled_at').eq('user_id', userId)
   ])
+  if (!userId || !isCurrentAccount(revision, userId)) return
 
   if (eventsResult.error || profilesResult.error || remindersResult.error) {
     errorMessage.value = 'Não foi possível carregar toda a agenda. Confirme as permissões da sua sessão e tente novamente.'
@@ -190,21 +221,21 @@ async function loadAgenda() {
   loading.value = false
 }
 
-async function saveOwnReminders(eventId: string, startsAt: string) {
+async function saveOwnReminders(eventId: string, startsAt: string, revision: number, userId: string) {
   const { $supabase } = useNuxtApp()
-  if (!$supabase || !auth.profile) return { error: new Error('Sessão indisponível') }
-
-  const deleteResult = await $supabase.from('event_reminders').delete().eq('event_id', eventId).eq('user_id', auth.profile.id)
-  if (deleteResult.error) return deleteResult
+  if (!$supabase || !isCurrentAccount(revision, userId)) return { error: new Error('Sessão indisponível') }
 
   const leads = selectedReminderLeads()
-  if (!leads.length) return { error: null }
-  return $supabase.from('event_reminders').insert(leads.map(lead => ({
-    event_id: eventId,
-    user_id: auth.profile!.id,
-    lead,
-    scheduled_for: reminderSchedule(startsAt, lead)
-  })))
+  if (leads.length) {
+    const saveResult = await $supabase.from('event_reminders').upsert(leads.map(lead => ({
+      event_id: eventId, user_id: userId, lead, scheduled_for: reminderSchedule(startsAt, lead), cancelled_at: null
+    })), { onConflict: 'event_id,user_id,lead' })
+    if (!isCurrentAccount(revision, userId)) return { error: null }
+    if (saveResult.error) return saveResult
+  }
+  let remove = $supabase.from('event_reminders').delete().eq('event_id', eventId).eq('user_id', userId)
+  if (leads.length) remove = remove.not('lead', 'in', `(${leads.join(',')})`)
+  return remove
 }
 
 async function saveEvent() {
@@ -222,9 +253,15 @@ async function saveEvent() {
     errorMessage.value = 'O término não pode acontecer antes do início.'
     return
   }
+  if (selectedReminderLeads().some(lead => Date.parse(reminderSchedule(startsAt.toISOString(), lead)) <= Date.now())) {
+    errorMessage.value = 'Um dos horários de aviso já passou. Escolha um intervalo menor ou desmarque essa preferência.'
+    return
+  }
 
   const { $supabase } = useNuxtApp()
   if (!$supabase) return
+  const userId = auth.profile.id
+  const revision = accountRevision
   saving.value = true
   errorMessage.value = ''
   feedback.value = ''
@@ -235,12 +272,15 @@ async function saveEvent() {
     ends_at: endsAt?.toISOString() || null,
     location: form.location.trim() || null,
     description: form.description.trim() || null,
-    responsible_id: form.responsibleId
+    responsible_id: form.responsibleId,
+    public_visibility: form.kind === 'service' && form.publicVisibility && !events.value.find(event => event.id === editingId.value)?.community_id && !events.value.find(event => event.id === editingId.value)?.ministry_id
   }
 
+  const wasEditing = Boolean(editingId.value)
   let eventId = editingId.value
   if (eventId) {
     const { error } = await $supabase.from('events').update(payload).eq('id', eventId)
+    if (!isCurrentAccount(revision, userId)) return
     if (error) {
       saving.value = false
       errorMessage.value = 'Não foi possível atualizar o evento.'
@@ -248,6 +288,7 @@ async function saveEvent() {
     }
   } else {
     const { data, error } = await $supabase.from('events').insert(payload).select('id').single()
+    if (!isCurrentAccount(revision, userId)) return
     if (error || !data) {
       saving.value = false
       errorMessage.value = 'Não foi possível criar o evento.'
@@ -261,32 +302,39 @@ async function saveEvent() {
     errorMessage.value = 'Não foi possível identificar o evento salvo para configurar os lembretes.'
     return
   }
-  const remindersResult = await saveOwnReminders(eventId, startsAt.toISOString())
+  editingId.value = eventId
+  const remindersResult = await saveOwnReminders(eventId, startsAt.toISOString(), revision, userId)
+  if (!isCurrentAccount(revision, userId)) return
   saving.value = false
   if (remindersResult.error) {
-    errorMessage.value = 'O evento foi salvo, mas os seus lembretes não puderam ser atualizados.'
     await loadAgenda()
+    if (!isCurrentAccount(revision, userId)) return
+    errorMessage.value = 'O evento foi salvo, mas suas preferências de aviso não puderam ser atualizadas.'
     return
   }
 
   editorOpen.value = false
-  feedback.value = editingId.value ? 'Evento e seus lembretes pessoais foram atualizados.' : 'Evento criado e lembretes pessoais configurados.'
+  feedback.value = wasEditing ? 'Evento atualizado na agenda.' : 'Evento criado na agenda.'
   await loadAgenda()
 }
 
 async function cancelEvent(event: ChurchEvent) {
+  const userId = auth.profile?.id
+  const revision = accountRevision
   const { $supabase } = useNuxtApp()
-  if (!$supabase) return
+  if (!$supabase || !userId) return
   saving.value = true
   errorMessage.value = ''
   feedback.value = ''
   const { error } = await $supabase.from('events').update({ cancelled_at: new Date().toISOString() }).eq('id', event.id).is('cancelled_at', null)
+  if (!isCurrentAccount(revision, userId)) return
   saving.value = false
   if (error) {
     errorMessage.value = 'Não foi possível cancelar este evento.'
     return
   }
   feedback.value = 'Evento cancelado. O registro foi mantido na agenda administrativa.'
+  eventToCancel.value = null
   await loadAgenda()
 }
 
@@ -302,7 +350,7 @@ useCreateFromQuery(openCreate)
     />
     <PageIntro
       title="Agenda e eventos"
-      description="Organize a programação da igreja, defina responsáveis e mantenha lembretes pessoais para os próximos compromissos."
+      description="Publique encontros na agenda dos membros e escolha quais cultos também aparecem aos visitantes."
       icon="i-lucide-calendar-cog"
     />
 
@@ -315,8 +363,8 @@ useCreateFromQuery(openCreate)
     <UAlert
       color="primary"
       variant="subtle"
-      title="Lembretes respeitam a privacidade"
-      description="Esta tela mostra e gerencia somente os seus lembretes. Responsáveis e eventos usam as permissões já protegidas pelo banco."
+      title="Preferências de aviso da sua conta"
+      description="Os eventos aparecem na agenda dos membros. Cultos marcados como públicos também aparecem para visitantes. As preferências de aviso abaixo pertencem apenas à sua conta; adicione o evento ao seu calendário para receber um alerta."
     />
 
     <UAlert
@@ -362,7 +410,7 @@ useCreateFromQuery(openCreate)
           {{ loading ? '—' : activeReminders.length }}
         </p>
         <p class="mt-1 text-sm text-muted">
-          Seus lembretes ativos
+          Preferências de aviso salvas
         </p>
       </UCard>
     </section>
@@ -486,7 +534,7 @@ useCreateFromQuery(openCreate)
               :key="reminder.lead"
               color="neutral"
               variant="subtle"
-              :label="`Seu lembrete: ${reminderLabels[reminder.lead]}`"
+              :label="`Preferência: ${reminderLabels[reminder.lead]}`"
             />
           </div>
           <template #footer>
@@ -496,8 +544,16 @@ useCreateFromQuery(openCreate)
               </p>
               <div
                 v-if="!event.cancelled_at"
-                class="flex gap-2"
+                class="flex flex-wrap gap-2"
               >
+                <UButton
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-calendar-plus"
+                  label="Calendário"
+                  @click="downloadEventCalendar(event, remindersByEvent.get(event.id)?.[0]?.lead || 'day')"
+                />
                 <UButton
                   size="sm"
                   color="neutral"
@@ -513,7 +569,7 @@ useCreateFromQuery(openCreate)
                   icon="i-lucide-ban"
                   label="Cancelar"
                   :loading="saving"
-                  @click="cancelEvent(event)"
+                  @click="eventToCancel = event"
                 />
               </div>
             </div>
@@ -547,12 +603,13 @@ useCreateFromQuery(openCreate)
     <UModal
       v-model:open="editorOpen"
       :title="editingId ? 'Editar evento' : 'Novo evento'"
-      description="Os lembretes abaixo pertencem somente à sua conta."
+      description="Publique os detalhes do encontro. As preferências de aviso pertencem somente à sua conta."
     >
       <template #body>
-        <form
+        <UForm
+          :state="form"
           class="grid gap-4"
-          @submit.prevent="saveEvent"
+          @submit="saveEvent"
         >
           <div class="grid gap-4 sm:grid-cols-2">
             <UFormField
@@ -620,12 +677,22 @@ useCreateFromQuery(openCreate)
               placeholder="Informações importantes para a comunidade."
             />
           </UFormField>
+          <UFormField
+            v-if="form.kind === 'service' && !events.find(event => event.id === editingId)?.community_id && !events.find(event => event.id === editingId)?.ministry_id"
+            label="Visibilidade para visitantes"
+            description="Título, data, local e descrição aparecerão na página inicial e nos horários públicos. Os dados do responsável não serão exibidos."
+          >
+            <USwitch
+              v-model="form.publicVisibility"
+              label="Mostrar este culto aos visitantes"
+            />
+          </UFormField>
           <fieldset class="rounded-xl border border-default p-4">
             <legend class="px-1 text-sm font-semibold">
-              Meus lembretes
+              Minhas preferências de aviso
             </legend>
             <p class="text-sm text-muted">
-              Eles serão salvos apenas para a sua conta.
+              Elas serão salvas na sua conta. Para receber um alerta, adicione o evento ao seu calendário após salvar. Este app ainda não envia lembretes por push.
             </p>
             <div class="mt-3 grid gap-2 sm:grid-cols-3">
               <UCheckbox
@@ -656,7 +723,44 @@ useCreateFromQuery(openCreate)
               :label="editingId ? 'Salvar alterações' : 'Criar evento'"
             />
           </div>
-        </form>
+        </UForm>
+      </template>
+    </UModal>
+    <UModal
+      v-model:open="cancelOpen"
+      title="Cancelar este encontro?"
+      description="Ele deixará de aparecer na agenda dos membros e, se for público, nas páginas para visitantes. O registro será mantido na gestão."
+      :dismissible="!saving"
+      :close="{ disabled: saving }"
+    >
+      <template #body>
+        <div
+          v-if="eventToCancel"
+          class="space-y-2"
+        >
+          <p class="font-semibold">
+            {{ eventToCancel.title }}
+          </p><p class="text-sm text-muted">
+            {{ formatDate(eventToCancel.starts_at) }}
+          </p>
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex w-full flex-wrap justify-end gap-3">
+          <UButton
+            color="neutral"
+            variant="outline"
+            label="Manter encontro"
+            :disabled="saving"
+            @click="eventToCancel = null"
+          />
+          <UButton
+            color="error"
+            label="Confirmar cancelamento"
+            :loading="saving"
+            @click="eventToCancel && cancelEvent(eventToCancel)"
+          />
+        </div>
       </template>
     </UModal>
   </div>

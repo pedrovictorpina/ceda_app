@@ -7,7 +7,9 @@ const emit = defineEmits<{ edit: [], manage: [], join: [], leave: [], archive: [
 </script>
 
 <template>
-  <article
+  <UCard
+    as="article"
+    :ui="{ root: 'ring-0', body: 'contents' }"
     class="flex flex-col rounded-2xl border bg-default p-4"
     :class="item.archived_at ? 'border-dashed border-default opacity-75' : 'border-default'"
   >
@@ -122,5 +124,5 @@ const emit = defineEmits<{ edit: [], manage: [], join: [], leave: [], archive: [
         @click="emit('restore')"
       />
     </div>
-  </article>
+  </UCard>
 </template>

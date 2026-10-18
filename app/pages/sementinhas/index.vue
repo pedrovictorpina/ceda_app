@@ -192,8 +192,10 @@ onUnmounted(() => {
         @check-out="checkOut(child)"
         @edit="openForm(child)"
       />
-      <button
+      <UButton
         v-if="!loading || children.length"
+        color="neutral"
+        variant="ghost"
         type="button"
         class="focus-ring flex min-h-40 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary/30 p-6 text-center text-primary transition hover:bg-primary/5 active:scale-[0.99]"
         @click="openForm()"
@@ -209,7 +211,7 @@ onUnmounted(() => {
           v-if="!children.length"
           class="max-w-xs text-sm text-muted"
         >Nome, data de nascimento e, se quiser, uma foto. Depois a equipe infantil coloca a criança na turma.</span>
-      </button>
+      </UButton>
     </div>
 
     <p class="mt-6 flex items-start gap-2 text-sm text-muted">

@@ -12,6 +12,11 @@ export const BOTTOM_NAV_ROUTES: Record<BottomNavProfile, readonly string[]> = {
 
 export const RECENT_NAVIGATION_LIMIT = 4
 
+/** Turmas é uma ferramenta de gestão, ainda que sua URL também sirva aos professores. */
+export function isAdministrationPath(path: string) {
+  return ['/admin', '/operacao', '/sementinhas/turmas', '/design-system'].some(to => routeMatches(path, to))
+}
+
 export interface BottomNavContext {
   isAdminView: boolean
   canOperateStore: boolean
@@ -81,7 +86,7 @@ export interface SearchableEntry {
 export function buildSearchIndex(items: readonly NavigationItem[], sections: readonly NavigationSection[]): SearchableEntry[] {
   const entries: SearchableEntry[] = [
     ...items.map(({ label, icon, to, keywords }) => ({ label, icon, to, keywords })),
-    ...sections.flatMap(section => section.tabs.map(tab => ({ label: tab.label, icon: tab.icon, to: tab.to, keywords: [section.label], context: section.label })))
+    ...sections.flatMap(section => section.tabs.map(tab => ({ label: tab.label, icon: tab.icon, to: tab.to, keywords: [section.label, ...(tab.keywords ?? [])], context: section.label })))
   ]
   return entries.filter((entry, index) => entries.findIndex(other => other.to === entry.to) === index)
 }

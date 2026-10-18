@@ -44,6 +44,7 @@ export interface NavigationTab {
   icon: string
   to: string
   requires?: NavigationRequirement
+  keywords?: string[]
 }
 
 export interface NavigationSection {

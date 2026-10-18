@@ -18,6 +18,9 @@ export default defineNuxtPlugin(() => {
     ? createClient(url, key, {
         auth: {
           flowType: 'pkce',
+          // Recovery exchanges its code explicitly and verifies the requested
+          // flow. A normal signed-in session must not unlock password recovery.
+          detectSessionInUrl: window.location.pathname.replace(/\/$/, '') !== '/redefinir-senha',
           persistSession: true,
           autoRefreshToken: true,
           storage: authStorage

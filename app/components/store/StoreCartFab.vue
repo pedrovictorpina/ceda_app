@@ -11,7 +11,9 @@ const emit = defineEmits<{ open: [] }>()
       v-if="count"
       class="hide-while-typing store-fab-position pointer-events-none fixed inset-x-0 z-30 flex justify-center px-4 md:justify-end md:px-8 xl:hidden"
     >
-      <button
+      <UButton
+        color="primary"
+        variant="solid"
         type="button"
         class="focus-ring pointer-events-auto flex w-full max-w-md items-center gap-3 md:max-w-sm rounded-full bg-primary py-2 pl-2 pr-5 text-left text-white shadow-xl shadow-primary/30 ring-1 ring-white/10 transition active:scale-[0.98]"
         aria-haspopup="dialog"
@@ -30,7 +32,7 @@ const emit = defineEmits<{ open: [] }>()
         </span>
         <span class="flex-1 font-semibold">Ver pedido</span>
         <span class="text-lg font-bold tabular-nums">{{ formatBRL(total) }}</span>
-      </button>
+      </UButton>
     </div>
   </Transition>
 </template>

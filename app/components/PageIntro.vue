@@ -8,7 +8,7 @@ defineProps<{ title: string, description: string, icon?: string }>()
     <div class="relative flex items-start gap-4">
       <div
         v-if="icon"
-        class="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary text-white shadow-lg shadow-primary/20"
+        class="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary text-inverted shadow-lg shadow-primary/20"
       >
         <UIcon
           :name="icon"

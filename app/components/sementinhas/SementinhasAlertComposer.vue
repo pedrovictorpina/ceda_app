@@ -6,19 +6,20 @@ const props = defineProps<{ childName: string, sending: boolean }>()
 const open = defineModel<boolean>('open', { required: true })
 const emit = defineEmits<{ send: [payload: { reason: ChildAlertReason, note: string }] }>()
 
-const reason = ref<ChildAlertReason | null>(null)
+const reason = ref<ChildAlertReason>()
 const note = ref('')
 const error = ref('')
+const reasons = [...CHILD_ALERT_REASONS]
 
 watch(open, (isOpen) => {
   if (!isOpen) return
-  reason.value = null
+  reason.value = undefined
   note.value = ''
   error.value = ''
 })
 
 function send() {
-  error.value = validateAlertInput(reason.value, note.value) ?? ''
+  error.value = validateAlertInput(reason.value ?? null, note.value) ?? ''
   if (!error.value && reason.value) emit('send', { reason: reason.value, note: note.value })
 }
 </script>
@@ -32,28 +33,15 @@ function send() {
   >
     <template #body>
       <div class="mx-auto w-full max-w-lg space-y-3">
-        <div
-          class="grid gap-2 sm:grid-cols-2"
-          role="radiogroup"
+        <URadioGroup
+          v-model="reason"
+          :items="reasons"
+          variant="card"
+          indicator="hidden"
           aria-label="Motivo do alerta"
-        >
-          <button
-            v-for="item in CHILD_ALERT_REASONS"
-            :key="item.value"
-            type="button"
-            role="radio"
-            :aria-checked="reason === item.value"
-            class="focus-ring flex min-h-14 items-center gap-3 rounded-2xl border p-3 text-left font-semibold transition active:scale-[0.99]"
-            :class="reason === item.value ? 'border-primary bg-primary/10 text-primary' : 'border-default bg-default'"
-            @click="reason = item.value; error = ''"
-          >
-            <UIcon
-              :name="item.icon"
-              class="size-5 shrink-0"
-            />
-            {{ item.label }}
-          </button>
-        </div>
+          :ui="{ fieldset: 'grid gap-2 sm:grid-cols-2', item: 'min-h-14', label: 'flex-row gap-3 font-semibold', icon: 'size-5' }"
+          @update:model-value="error = ''"
+        />
         <UFormField
           :label="reason === 'other' ? 'Mensagem' : 'Complemento (opcional)'"
           :required="reason === 'other'"

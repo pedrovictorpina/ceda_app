@@ -82,11 +82,12 @@ onUnmounted(clearPhoto)
     :ui="{ content: 'max-h-[92dvh]', body: 'overflow-y-auto', footer: 'safe-bottom border-t border-default' }"
   >
     <template #body>
-      <form
+      <UForm
         id="child-form"
+        :state="form"
         class="mx-auto w-full max-w-lg space-y-4"
         novalidate
-        @submit.prevent="submit"
+        @submit="submit"
       >
         <div class="flex items-center gap-4">
           <SementinhasChildAvatar
@@ -97,13 +98,15 @@ onUnmounted(clearPhoto)
           <div class="min-w-0 flex-1 space-y-2">
             <label class="block">
               <span class="sr-only">Foto da criança (opcional)</span>
-              <input
+              <UInput
                 :key="inputKey"
                 type="file"
                 :accept="CHILD_PHOTO_ACCEPT"
-                class="block w-full text-sm file:mr-3 file:min-h-11 file:rounded-full file:border-0 file:bg-primary/10 file:px-4 file:font-semibold file:text-primary"
+                class="w-full"
+                size="lg"
+                :ui="{ base: 'file:mr-3 file:min-h-11 file:rounded-full file:border-0 file:bg-primary/10 file:px-4 file:font-semibold file:text-primary' }"
                 @change="selectPhoto"
-              >
+              />
             </label>
             <UButton
               v-if="shownPhoto"
@@ -203,7 +206,7 @@ onUnmounted(clearPhoto)
             </div>
           </div>
         </div>
-      </form>
+      </UForm>
     </template>
     <template #footer>
       <div class="mx-auto flex w-full max-w-lg gap-2">

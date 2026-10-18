@@ -9,7 +9,9 @@ const relative = computed(() => relativeDayLabel(props.person.celebrationDate, p
 </script>
 
 <template>
-  <li
+  <UCard
+    as="li"
+    :ui="{ root: 'ring-0', body: 'contents' }"
     class="relative flex min-h-18 items-center gap-3 rounded-2xl border p-3 transition-colors"
     :class="isToday ? 'border-primary/40 bg-primary/[0.06] shadow-sm shadow-primary/10' : 'border-default bg-default'"
   >
@@ -25,7 +27,7 @@ const relative = computed(() => relativeDayLabel(props.person.celebrationDate, p
       />
       <span
         v-if="isToday"
-        class="absolute -bottom-1 -right-1 grid size-6 place-items-center rounded-full bg-primary text-white ring-2 ring-(--ui-bg)"
+        class="absolute -bottom-1 -right-1 grid size-6 place-items-center rounded-full bg-primary text-inverted ring-2 ring-(--ui-bg)"
         aria-hidden="true"
       >
         <UIcon
@@ -56,5 +58,5 @@ const relative = computed(() => relativeDayLabel(props.person.celebrationDate, p
       :variant="isToday ? 'solid' : 'subtle'"
       :label="relative"
     />
-  </li>
+  </UCard>
 </template>

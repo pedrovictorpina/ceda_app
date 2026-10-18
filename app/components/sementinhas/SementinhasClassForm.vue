@@ -36,11 +36,12 @@ function submit() {
     :ui="{ content: 'max-h-[92dvh]', body: 'overflow-y-auto', footer: 'safe-bottom border-t border-default' }"
   >
     <template #body>
-      <form
+      <UForm
         id="class-form"
+        :state="form"
         class="mx-auto w-full max-w-lg space-y-4"
         novalidate
-        @submit.prevent="submit"
+        @submit="submit"
       >
         <UFormField
           label="Nome da turma"
@@ -110,7 +111,7 @@ function submit() {
             placeholder="Ex.: traga uma muda de roupa"
           />
         </UFormField>
-      </form>
+      </UForm>
     </template>
     <template #footer>
       <div class="mx-auto flex w-full max-w-lg gap-2">

@@ -1,11 +1,23 @@
 <script setup lang="ts">
-import { dailyMessage, upcomingEvents } from '~/data/contentCatalog'
+import type { PublishedEditorialItem } from '~/composables/usePublishedEditorial'
+import { editorialPreview } from '~/utils/editorial'
+import { formatAgendaDate, formatEditorialDate } from '~/utils/churchAgenda'
 
 definePageMeta({ middleware: 'auth' })
 useSeoMeta({ title: 'Início' })
-
 const auth = useAuthStore()
 const firstName = computed(() => auth.profile?.name?.split(' ')[0] || 'bem-vindo')
+const editorial = usePublishedEditorial()
+const agenda = useChurchAgenda()
+const message = ref<PublishedEditorialItem | null>(null)
+const currentMessage = computed(() => message.value ? editorialPreview(message.value) : null)
+async function loadMessage() {
+  message.value = await editorial.latest('word_of_day')
+}
+onMounted(() => {
+  void loadMessage()
+  void agenda.load()
+})
 </script>
 
 <template>
@@ -15,62 +27,98 @@ const firstName = computed(() => auth.profile?.name?.split(' ')[0] || 'bem-vindo
       description="Sua semana com a CEDA: palavra, encontros e caminhos para participar."
       icon="i-lucide-house"
     />
-
     <div class="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
-      <UCard class="relative overflow-hidden border-primary/20">
-        <div class="pointer-events-none absolute -right-16 -top-20 size-56 rounded-full bg-primary/10 blur-3xl" />
-        <div class="relative">
-          <div class="flex items-center justify-between gap-3">
-            <UBadge label="Palavra do dia" /><span class="text-xs text-muted">{{ dailyMessage.readTime }}</span>
-          </div>
-          <p class="mt-7 text-sm font-semibold uppercase tracking-[0.16em] text-primary">
-            {{ dailyMessage.reference }}
+      <UCard class="border-primary/20">
+        <UBadge label="Palavra do Dia" />
+        <p
+          v-if="editorial.loading.value"
+          class="py-10 text-muted"
+          role="status"
+        >
+          Carregando a mensagem…
+        </p>
+        <UAlert
+          v-else-if="editorial.errorMessage.value"
+          class="mt-5"
+          color="error"
+          variant="soft"
+          title="Mensagem indisponível"
+          :description="editorial.errorMessage.value"
+          :actions="[{ label: 'Tentar novamente', onClick: loadMessage }]"
+        />
+        <div v-else-if="currentMessage">
+          <p class="mt-5 text-sm text-muted">
+            {{ formatEditorialDate(currentMessage.message_date) }} · {{ currentMessage.readTime }}
           </p>
-          <h2 class="mt-2 text-3xl font-black">
-            {{ dailyMessage.title }}
+          <h2 class="mt-3 break-words text-3xl font-black">
+            {{ currentMessage.title }}
           </h2>
-          <p class="mt-4 max-w-2xl leading-7 text-muted">
-            {{ dailyMessage.excerpt }}
+          <p class="mt-4 line-clamp-5 whitespace-pre-line leading-7 text-muted">
+            {{ currentMessage.excerpt }}
           </p>
-        </div>
-        <template #footer>
           <UButton
-            :to="`/mensagens/${dailyMessage.slug}`"
+            class="mt-6"
+            :to="`/mensagens/${currentMessage.slug}`"
             variant="soft"
             label="Continuar leitura"
             trailing-icon="i-lucide-arrow-right"
           />
-        </template>
+        </div>
+        <div
+          v-else
+          class="py-8"
+        >
+          <h2 class="font-semibold">
+            Ainda não há mensagem publicada
+          </h2><p class="mt-2 text-sm text-muted">
+            As próximas reflexões da equipe aparecerão aqui.
+          </p>
+        </div>
       </UCard>
-
       <UCard>
         <template #header>
-          <div class="flex items-center justify-between">
-            <h2 class="font-semibold">
-              Próximos encontros
-            </h2><UIcon
-              name="i-lucide-calendar-days"
-              class="size-5 text-primary"
-            />
-          </div>
+          <h2 class="font-semibold">
+            Próximos encontros
+          </h2>
         </template>
-        <div class="space-y-4">
-          <template
-            v-for="(event, index) in upcomingEvents.slice(0, 3)"
+        <p
+          v-if="agenda.loading.value"
+          class="py-6 text-muted"
+          role="status"
+        >
+          Carregando a agenda…
+        </p>
+        <UAlert
+          v-else-if="agenda.errorMessage.value"
+          color="error"
+          variant="soft"
+          title="Agenda indisponível"
+          :description="agenda.errorMessage.value"
+          :actions="[{ label: 'Tentar novamente', onClick: () => agenda.load() }]"
+        />
+        <div
+          v-else-if="agenda.events.value.length"
+          class="space-y-5"
+        >
+          <div
+            v-for="event in agenda.events.value.slice(0, 3)"
             :key="event.id"
           >
-            <div class="flex gap-3">
-              <div class="mt-1 size-2 shrink-0 rounded-full bg-primary" /><div>
-                <p class="font-medium">
-                  {{ event.title }}
-                </p><p class="mt-0.5 text-sm text-muted">
-                  {{ event.date }} · {{ event.time }} · {{ event.location }}
-                </p>
-              </div>
-            </div>
-            <USeparator v-if="index < 2" />
-          </template>
+            <h3 class="font-semibold">
+              {{ event.title }}
+            </h3><p class="mt-1 text-sm text-muted">
+              {{ formatAgendaDate(event.starts_at) }}
+            </p><p class="mt-1 text-sm text-muted">
+              {{ event.location || 'Local a confirmar' }}
+            </p>
+          </div>
         </div>
+        <p
+          v-else
+          class="py-6 text-sm text-muted"
+        >
+          Ainda não há próximos encontros publicados. Consulte a equipe se precisar confirmar um horário.
+        </p>
         <template #footer>
           <UButton
             to="/eventos"
@@ -81,9 +129,8 @@ const firstName = computed(() => auth.profile?.name?.split(' ')[0] || 'bem-vindo
         </template>
       </UCard>
     </div>
-
     <section class="mt-7 grid gap-4 sm:grid-cols-3">
-      <NuxtLink
+      <ULink
         to="/oracao"
         class="focus-ring group rounded-2xl border border-default bg-default p-5 transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg"
       >
@@ -91,8 +138,8 @@ const firstName = computed(() => auth.profile?.name?.split(' ')[0] || 'bem-vindo
           name="i-lucide-heart"
           class="size-7 text-primary"
         /><h2 class="mt-3 font-semibold">Compartilhar um pedido</h2><p class="mt-1 text-sm text-muted">Registre um motivo de oração com privacidade.</p>
-      </NuxtLink>
-      <NuxtLink
+      </ULink>
+      <ULink
         to="/comunidade"
         class="focus-ring group rounded-2xl border border-default bg-default p-5 transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg"
       >
@@ -100,8 +147,8 @@ const firstName = computed(() => auth.profile?.name?.split(' ')[0] || 'bem-vindo
           name="i-lucide-users-round"
           class="size-7 text-primary"
         /><h2 class="mt-3 font-semibold">Encontrar uma comunidade</h2><p class="mt-1 text-sm text-muted">Conheça grupos e frentes de serviço.</p>
-      </NuxtLink>
-      <NuxtLink
+      </ULink>
+      <ULink
         to="/noticias"
         class="focus-ring group rounded-2xl border border-default bg-default p-5 transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg"
       >
@@ -109,7 +156,7 @@ const firstName = computed(() => auth.profile?.name?.split(' ')[0] || 'bem-vindo
           name="i-lucide-newspaper"
           class="size-7 text-primary"
         /><h2 class="mt-3 font-semibold">Acompanhar novidades</h2><p class="mt-1 text-sm text-muted">Veja os últimos comunicados da CEDA.</p>
-      </NuxtLink>
+      </ULink>
     </section>
   </div>
 </template>

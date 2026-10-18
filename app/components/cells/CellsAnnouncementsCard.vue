@@ -37,9 +37,11 @@ async function create() {
       v-if="detail.announcements.length"
       class="space-y-4"
     >
-      <article
+      <UCard
         v-for="item in detail.announcements"
         :key="item.id"
+        as="article"
+        :ui="{ root: 'ring-0', body: 'contents' }"
         class="rounded-2xl border border-default p-3"
       >
         <div class="flex items-start justify-between gap-2">
@@ -78,7 +80,7 @@ async function create() {
             @click="run(() => cellStore.setAnnouncementStatus(detail.id, item.id, 'archived'), 'Comunicado arquivado')"
           />
         </div>
-      </article>
+      </UCard>
     </div>
     <p
       v-else
@@ -87,10 +89,11 @@ async function create() {
       Nenhum comunicado disponível.
     </p>
 
-    <form
+    <UForm
       v-if="canManage"
+      :state="draft"
       class="mt-5 space-y-3 border-t border-default pt-4"
-      @submit.prevent="create"
+      @submit="create"
     >
       <p class="text-sm font-semibold">
         Novo comunicado
@@ -125,6 +128,6 @@ async function create() {
       <p class="text-xs text-muted">
         Ao publicar, o app cria notificações internas para membros e co-líderes.
       </p>
-    </form>
+    </UForm>
   </UCard>
 </template>

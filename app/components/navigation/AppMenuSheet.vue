@@ -61,7 +61,7 @@ watch(open, (isOpen) => {
             v-for="entry in results"
             :key="entry.to"
           >
-            <NuxtLink
+            <ULink
               :to="entry.to"
               class="focus-ring flex min-h-12 items-center gap-3 rounded-xl px-3 text-sm font-medium hover:bg-elevated"
               @click="close"
@@ -75,7 +75,7 @@ watch(open, (isOpen) => {
                 v-if="entry.context"
                 class="text-xs text-muted"
               >{{ entry.context }}</span>
-            </NuxtLink>
+            </ULink>
           </li>
         </ul>
         <p
@@ -99,7 +99,7 @@ watch(open, (isOpen) => {
             Usados recentemente
           </h3>
           <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
-            <NuxtLink
+            <ULink
               v-for="entry in recent"
               :key="entry.to"
               :to="entry.to"
@@ -111,7 +111,7 @@ watch(open, (isOpen) => {
                 class="size-4 text-primary"
               />
               {{ entry.label }}
-            </NuxtLink>
+            </ULink>
           </div>
         </section>
 
@@ -132,7 +132,7 @@ watch(open, (isOpen) => {
               v-for="item in group.items"
               :key="item.to"
             >
-              <NuxtLink
+              <ULink
                 :to="item.to"
                 class="focus-ring flex h-full min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border p-2 text-center text-xs font-medium leading-tight transition"
                 :class="item.to === activeTo ? 'border-primary/40 bg-primary/10 text-primary' : 'border-default bg-elevated/40 text-default hover:bg-elevated'"
@@ -141,7 +141,7 @@ watch(open, (isOpen) => {
               >
                 <span
                   class="grid size-10 place-items-center rounded-xl"
-                  :class="item.to === activeTo ? 'bg-primary text-white' : 'bg-primary/10 text-primary'"
+                  :class="item.to === activeTo ? 'bg-primary text-inverted' : 'bg-primary/10 text-primary'"
                 >
                   <UIcon
                     :name="item.icon"
@@ -149,7 +149,7 @@ watch(open, (isOpen) => {
                   />
                 </span>
                 {{ item.label }}
-              </NuxtLink>
+              </ULink>
             </li>
           </ul>
         </section>

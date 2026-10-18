@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
 import type { ChartTableRow, SectionStatus } from '~/utils/adminDashboard'
 
 const props = withDefaults(defineProps<{
@@ -26,6 +27,11 @@ const props = withDefaults(defineProps<{
 
 const headingId = useId()
 const showTable = computed(() => props.status === 'ready' && !props.empty && props.tableRows.length > 0)
+const columns = computed<TableColumn<ChartTableRow>[]>(() => [
+  { accessorKey: 'label', header: props.tableHeaders[0] },
+  { accessorKey: 'value', header: props.tableHeaders[1], meta: { class: { th: 'text-right', td: 'text-right font-medium text-highlighted' } } },
+  ...(props.tableHeaders.length === 3 ? [{ accessorKey: 'extra', header: props.tableHeaders[2], meta: { class: { th: 'text-right', td: 'text-right' } } }] : [])
+])
 </script>
 
 <template>
@@ -88,61 +94,22 @@ const showTable = computed(() => props.status === 'ready' && !props.empty && pro
       </div>
     </div>
 
-    <details
+    <UAccordion
       v-if="showTable"
-      class="group mt-3 text-sm"
+      class="mt-3"
+      :items="[{ label: 'Ver dados em tabela', icon: 'i-lucide-table-2', slot: 'data' }]"
     >
-      <summary class="focus-ring inline-flex min-h-11 cursor-pointer select-none items-center gap-1.5 rounded-lg font-medium text-muted hover:text-default">
-        <UIcon
-          name="i-lucide-table-2"
-          class="size-4"
+      <template #data>
+        <UTable
+          :data="tableRows"
+          :columns="columns"
+          :caption="tableCaption || title"
+          sticky
+          class="max-h-72 rounded-xl border border-default tabular-nums"
+          :ui="{ caption: 'sr-only', th: 'px-3 py-2 text-xs', td: 'px-3 py-2' }"
         />
-        <span class="group-open:hidden">Ver dados em tabela</span>
-        <span class="hidden group-open:inline">Ocultar tabela</span>
-      </summary>
-      <div class="mt-2 max-h-72 overflow-auto rounded-xl border border-default">
-        <table class="w-full text-left text-sm tabular-nums">
-          <caption class="sr-only">
-            {{ tableCaption || title }}
-          </caption>
-          <thead class="sticky top-0 bg-elevated text-xs text-muted">
-            <tr>
-              <th
-                v-for="(header, index) in tableHeaders"
-                :key="header"
-                scope="col"
-                class="px-3 py-2 font-medium"
-                :class="index > 0 ? 'text-right' : ''"
-              >
-                {{ header }}
-              </th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-default">
-            <tr
-              v-for="row in tableRows"
-              :key="row.key"
-            >
-              <th
-                scope="row"
-                class="px-3 py-2 font-normal"
-              >
-                {{ row.label }}
-              </th>
-              <td class="px-3 py-2 text-right font-medium text-highlighted">
-                {{ row.value }}
-              </td>
-              <td
-                v-if="tableHeaders.length === 3"
-                class="px-3 py-2 text-right text-muted"
-              >
-                {{ row.extra }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </details>
+      </template>
+    </UAccordion>
   </UCard>
 </template>
 

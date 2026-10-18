@@ -288,12 +288,7 @@ function openTeamMember(member: TeamMember) {
               <UCard
                 v-for="member in presidency"
                 :key="member.name"
-                class="cursor-pointer border-primary/20 bg-default transition hover:border-primary/50 hover:shadow-md focus-visible:outline-3 focus-visible:outline-primary"
-                role="button"
-                tabindex="0"
-                @click="openTeamMember(member)"
-                @keydown.enter="openTeamMember(member)"
-                @keydown.space.prevent="openTeamMember(member)"
+                class="border-primary/20 bg-default"
               >
                 <div class="flex items-start gap-4">
                   <UAvatar
@@ -313,6 +308,14 @@ function openTeamMember(member: TeamMember) {
                       {{ member.bio }}
                     </p>
                     <UButton
+                      class="mr-2 mt-4"
+                      size="sm"
+                      variant="soft"
+                      label="Conhecer história"
+                      :aria-label="`Conhecer a história de ${member.name}`"
+                      @click="openTeamMember(member)"
+                    />
+                    <UButton
                       class="mt-4"
                       :to="member.instagram"
                       target="_blank"
@@ -322,7 +325,6 @@ function openTeamMember(member: TeamMember) {
                       size="sm"
                       icon="i-lucide-instagram"
                       :label="member.handle"
-                      @click.stop
                     />
                   </div>
                 </div>
@@ -339,12 +341,7 @@ function openTeamMember(member: TeamMember) {
               <UCard
                 v-for="member in leadership"
                 :key="member.name"
-                class="cursor-pointer bg-default transition hover:border-primary/50 hover:shadow-md focus-visible:outline-3 focus-visible:outline-primary"
-                role="button"
-                tabindex="0"
-                @click="openTeamMember(member)"
-                @keydown.enter="openTeamMember(member)"
-                @keydown.space.prevent="openTeamMember(member)"
+                class="bg-default"
               >
                 <UAvatar
                   :src="member.image"
@@ -362,6 +359,14 @@ function openTeamMember(member: TeamMember) {
                   {{ member.bio }}
                 </p>
                 <UButton
+                  class="mr-2 mt-4"
+                  size="sm"
+                  variant="soft"
+                  label="Conhecer história"
+                  :aria-label="`Conhecer a história de ${member.name}`"
+                  @click="openTeamMember(member)"
+                />
+                <UButton
                   class="mt-4"
                   :to="member.instagram"
                   target="_blank"
@@ -371,7 +376,6 @@ function openTeamMember(member: TeamMember) {
                   size="sm"
                   icon="i-lucide-instagram"
                   :label="member.handle"
-                  @click.stop
                 />
               </UCard>
             </div>

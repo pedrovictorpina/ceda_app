@@ -46,11 +46,12 @@ function submit() {
     :ui="{ content: 'max-h-[92dvh]', body: 'overflow-y-auto', footer: 'safe-bottom border-t border-default' }"
   >
     <template #body>
-      <form
+      <UForm
         id="cell-details-form"
+        :state="form"
         class="mx-auto grid w-full max-w-2xl gap-4 sm:grid-cols-2"
         novalidate
-        @submit.prevent="submit"
+        @submit="submit"
       >
         <UFormField
           class="sm:col-span-2"
@@ -201,7 +202,7 @@ function submit() {
             placeholder="lider@exemplo.com"
           />
         </UFormField>
-      </form>
+      </UForm>
     </template>
     <template #footer>
       <div class="mx-auto flex w-full max-w-2xl gap-2">
