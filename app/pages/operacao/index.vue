@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { canManageChurch, hasRole } from '~/utils/authorization'
+import { canOperateStore } from '~/utils/authorization'
 
 definePageMeta({ middleware: ['auth', 'operations'] })
-useSeoMeta({ title: 'Caixa e pedidos' })
+useSeoMeta({ title: 'Caixa e balcão' })
 
 interface Product {
   id: string
@@ -47,9 +47,9 @@ const loading = ref(true)
 const saving = ref(false)
 const feedback = ref('')
 
-const canManageInventory = computed(() => canManageChurch(auth.profile) || hasRole(auth.profile, 'cashier'))
-const canConfirmOrders = computed(() => canManageChurch(auth.profile) || hasRole(auth.profile, 'cashier'))
-const canFulfillOrders = computed(() => canManageChurch(auth.profile) || hasRole(auth.profile, 'counter'))
+const canManageInventory = computed(() => canOperateStore(auth.profile))
+const canConfirmOrders = canManageInventory
+const canFulfillOrders = canManageInventory
 const activeProducts = computed(() => products.value.filter(product => product.active))
 const awaitingPaymentCount = computed(() => orders.value.filter(order => order.status === 'awaiting_payment').length)
 const readyForPickupCount = computed(() => orders.value.filter(order => order.status === 'ready_for_pickup').length)
@@ -61,10 +61,8 @@ const otherOrders = computed(() => orders.value.filter(order => !actionableOrder
 const visibleOrders = computed(() => canManageInventory.value
   ? [...actionableOrders.value, ...otherOrders.value]
   : actionableOrders.value)
-const operationTitle = computed(() => canManageInventory.value ? 'Caixa e pedidos' : 'Balcão e entrega')
-const operationDescription = computed(() => canManageInventory.value
-  ? 'Prepare os produtos do dia e confirme pagamentos. O balcão recebe os pedidos liberados para retirada.'
-  : 'Confira os itens de cada pedido liberado, entregue ao membro e confirme a baixa do estoque.')
+const operationTitle = 'Caixa e balcão'
+const operationDescription = 'Prepare os produtos do dia, confirme pagamentos e finalize a entrega dos pedidos liberados para retirada.'
 const paymentOptions = [
   { label: 'Dinheiro', value: 'cash' },
   { label: 'Pix', value: 'pix' },
@@ -392,7 +390,7 @@ onUnmounted(() => {
           </p><h2 class="mt-1 text-2xl font-bold">
             Pedidos em andamento
           </h2><p class="mt-1 text-sm text-muted">
-            O caixa confirma o pagamento; o balcão finaliza a entrega.
+            Confirme o pagamento e, depois, finalize a entrega do pedido.
           </p>
         </div><div class="flex gap-2">
           <UBadge
@@ -571,7 +569,7 @@ onUnmounted(() => {
             </div><p class="mt-4 font-semibold">
               Fila vazia
             </p><p class="mt-1 text-sm text-muted">
-              {{ canFulfillOrders && !canConfirmOrders ? 'Os pedidos aparecerão aqui após a confirmação do caixa.' : 'Os próximos pedidos dos membros aparecerão aqui para o caixa.' }}
+              Os próximos pedidos aparecerão aqui para confirmar o pagamento e finalizar a entrega.
             </p>
           </div>
         </UCard>

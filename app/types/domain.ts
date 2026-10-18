@@ -1,5 +1,6 @@
 import type { CellLeaderProfile } from './cells'
 
+/** counter is a persisted legacy alias of cashier (Caixa e balcão). */
 export type SystemRole = 'member' | 'administrator' | 'pastor' | 'cashier' | 'counter' | 'teacher'
 export type MinistryRole = 'leader' | 'member'
 export type CommunityVisibility = 'members' | 'private'

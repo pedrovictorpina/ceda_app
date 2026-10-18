@@ -1,8 +1,8 @@
 import type { SystemRole } from '~/types/domain'
-import { useSupabaseAdmin, useSupabaseTokenVerifier } from '~~/server/utils/supabaseAdmin'
+import { normalizeSystemRoles, storeOperatorRoles } from '../../../app/utils/systemRoles'
+import { useSupabaseAdmin, useSupabaseTokenVerifier } from '../../utils/supabaseAdmin'
 
 const manageableRoles: SystemRole[] = ['administrator', 'pastor', 'cashier', 'counter', 'teacher']
-const allRoles: SystemRole[] = ['member', ...manageableRoles]
 
 interface RoleChangePayload {
   userId?: unknown
@@ -13,13 +13,6 @@ interface RoleChangePayload {
 function isUuid(value: unknown): value is string {
   return typeof value === 'string'
     && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
-}
-
-function normalizedRoles(value: unknown): SystemRole[] {
-  const roles = Array.isArray(value)
-    ? value.filter((role): role is SystemRole => typeof role === 'string' && allRoles.includes(role as SystemRole))
-    : []
-  return [...new Set<SystemRole>(['member', ...roles])]
 }
 
 export default defineEventHandler(async (event) => {
@@ -37,13 +30,14 @@ export default defineEventHandler(async (event) => {
   const requester = requesterData.user
   if (requesterError || !requester) throw createError({ statusCode: 401, statusMessage: 'A sessão não é mais válida.' })
 
-  const requesterRoles = normalizedRoles(requester.app_metadata?.roles)
+  const requesterRoles = normalizeSystemRoles(requester.app_metadata?.roles)
   if (!requesterRoles.includes('administrator')) {
     throw createError({ statusCode: 403, statusMessage: 'Somente administradores podem alterar papéis do sistema.' })
   }
 
   const targetUserId = payload.userId
-  const role = payload.role as SystemRole
+  const role = payload.role === 'counter' ? 'cashier' : payload.role as SystemRole
+  const affectedRoles = role === 'cashier' ? [...storeOperatorRoles] : [role]
   const enabled = payload.enabled
   if (targetUserId === requester.id) {
     throw createError({ statusCode: 400, statusMessage: 'Por segurança, não é permitido alterar os próprios papéis.' })
@@ -54,45 +48,50 @@ export default defineEventHandler(async (event) => {
   const target = targetData.user
   if (targetError || !target) throw createError({ statusCode: 404, statusMessage: 'O usuário selecionado não foi encontrado.' })
 
-  const previousRoles = normalizedRoles(target.app_metadata?.roles)
+  const previousRoles = [...new Set<SystemRole>(['member', ...normalizeSystemRoles(target.app_metadata?.roles)])]
   const nextRoles = enabled
     ? [...new Set([...previousRoles, role])]
     : previousRoles.filter(currentRole => currentRole !== role)
+  const storedRoles = nextRoles.includes('cashier') ? [...nextRoles, 'counter'] : nextRoles
+  const grantedAt = new Date().toISOString()
 
-  const { data: existingRoleRow, error: existingRoleError } = await admin
-    .from('user_system_roles')
-    .select('user_id, role, granted_by, granted_at')
-    .eq('user_id', targetUserId)
-    .eq('role', role)
-    .maybeSingle()
-  if (existingRoleError) throw createError({ statusCode: 500, statusMessage: 'Não foi possível verificar o papel atual.' })
+  // Returned rows are exactly the grants changed by this request. Existing
+  // grants retain their original audit fields and never enter an enable rollback.
+  const { data: changedRows, error: roleError } = enabled
+    ? await admin
+        .from('user_system_roles')
+        .upsert(affectedRoles.map(currentRole => ({ user_id: targetUserId, role: currentRole, granted_by: requester.id, granted_at: grantedAt })), { onConflict: 'user_id,role', ignoreDuplicates: true })
+        .select('user_id, role, granted_by, granted_at')
+    : await admin
+        .from('user_system_roles')
+        .delete()
+        .eq('user_id', targetUserId)
+        .in('role', affectedRoles)
+        .select('user_id, role, granted_by, granted_at')
+  if (roleError) throw createError({ statusCode: 500, statusMessage: enabled ? 'Não foi possível registrar o novo papel.' : 'Não foi possível remover o papel registrado.' })
 
-  if (enabled) {
-    const { error } = await admin
-      .from('user_system_roles')
-      .upsert({ user_id: targetUserId, role, granted_by: requester.id }, { onConflict: 'user_id,role' })
-    if (error) throw createError({ statusCode: 500, statusMessage: 'Não foi possível registrar o novo papel.' })
-  } else {
-    const { error } = await admin
-      .from('user_system_roles')
-      .delete()
-      .eq('user_id', targetUserId)
-      .eq('role', role)
-    if (error) throw createError({ statusCode: 500, statusMessage: 'Não foi possível remover o papel registrado.' })
-  }
-
-  const { error: updateError } = await admin.auth.admin.updateUserById(targetUserId, {
-    app_metadata: { ...target.app_metadata, roles: nextRoles }
-  })
-
-  if (updateError) {
-    const rollback = enabled
-      ? admin.from('user_system_roles').delete().eq('user_id', targetUserId).eq('role', role)
-      : existingRoleRow
-        ? admin.from('user_system_roles').insert(existingRoleRow)
-        : Promise.resolve({ error: null })
-    await rollback
-    throw createError({ statusCode: 502, statusMessage: 'O papel não foi sincronizado com a autenticação. Nenhuma alteração foi mantida.' })
+  try {
+    const { error } = await admin.auth.admin.updateUserById(targetUserId, {
+      app_metadata: { ...target.app_metadata, roles: storedRoles }
+    })
+    if (error) throw error
+  } catch {
+    try {
+      if (changedRows?.length) {
+        const rollback = enabled
+          ? await admin.from('user_system_roles').delete()
+              .eq('user_id', targetUserId)
+              .in('role', changedRows.map(row => row.role))
+              .eq('granted_by', requester.id)
+              .eq('granted_at', grantedAt)
+              .select('role')
+          : await admin.from('user_system_roles').insert(changedRows)
+        if (rollback.error || (enabled && rollback.data?.length !== changedRows.length)) throw new Error('Role rollback failed')
+      }
+    } catch {
+      throw createError({ statusCode: 500, statusMessage: 'A sincronização dos papéis falhou e não foi possível reverter todos os registros. Confira os papéis do usuário antes de tentar novamente.', data: { code: 'ROLE_ROLLBACK_FAILED' } })
+    }
+    throw createError({ statusCode: 502, statusMessage: 'O papel não foi sincronizado com a autenticação. As alterações no banco foram revertidas.', data: { code: 'ROLE_AUTH_SYNC_FAILED' } })
   }
 
   return {

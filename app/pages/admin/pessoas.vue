@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SystemRole } from '~/types/domain'
+import { normalizeSystemRoles } from '~/utils/systemRoles'
 
 definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] })
 useSeoMeta({ title: 'Pessoas e permissões' })
@@ -68,8 +69,8 @@ const roleConfirmationOpen = computed({
 const roleLabels: Record<SystemRole, string> = {
   administrator: 'Administrador',
   pastor: 'Pastor',
-  cashier: 'Caixa e estoque',
-  counter: 'Balcão',
+  cashier: 'Caixa e balcão',
+  counter: 'Caixa e balcão',
   teacher: 'Professor(a) infantil',
   member: 'Membro'
 }
@@ -84,8 +85,7 @@ const roleFilterItems = [
   { label: 'Sem função adicional', value: 'member' },
   { label: 'Administradores', value: 'administrator' },
   { label: 'Pastores', value: 'pastor' },
-  { label: 'Caixa e estoque', value: 'cashier' },
-  { label: 'Balcão', value: 'counter' },
+  { label: 'Caixa e balcão', value: 'cashier' },
   { label: 'Professores', value: 'teacher' }
 ]
 const phoneFilterItems = [
@@ -104,7 +104,7 @@ const pageSizeItems = [10, 25, 50, 100]
 const memberRoles = computed(() => {
   const rolesByMember = new Map<string, SystemRole[]>()
   for (const row of roleRows.value) {
-    rolesByMember.set(row.user_id, [...(rolesByMember.get(row.user_id) || []), row.role])
+    rolesByMember.set(row.user_id, normalizeSystemRoles([...(rolesByMember.get(row.user_id) || []), row.role]))
   }
   return rolesByMember
 })
@@ -616,19 +616,10 @@ onMounted(loadPeople)
                 size="xs"
                 color="neutral"
                 :variant="hasMemberRole(member.id, 'cashier') ? 'solid' : 'outline'"
-                :label="hasMemberRole(member.id, 'cashier') ? 'Remover caixa' : 'Tornar caixa'"
+                :label="hasMemberRole(member.id, 'cashier') ? 'Remover caixa e balcão' : 'Conceder caixa e balcão'"
                 :loading="savingRole === `${member.id}:cashier`"
                 :disabled="Boolean(savingRole) || member.id === auth.profile?.id"
                 @click="updateSystemRole(member, 'cashier', !hasMemberRole(member.id, 'cashier'))"
-              />
-              <UButton
-                size="xs"
-                color="neutral"
-                :variant="hasMemberRole(member.id, 'counter') ? 'solid' : 'outline'"
-                :label="hasMemberRole(member.id, 'counter') ? 'Remover balcão' : 'Tornar balcão'"
-                :loading="savingRole === `${member.id}:counter`"
-                :disabled="Boolean(savingRole) || member.id === auth.profile?.id"
-                @click="updateSystemRole(member, 'counter', !hasMemberRole(member.id, 'counter'))"
               />
               <UButton
                 size="xs"

@@ -273,8 +273,8 @@ describe('shortcuts', () => {
     expect(ids).toContain('content')
   })
 
-  it('keeps only store areas for a cashier', () => {
-    expect(dashboardShortcuts(profileWith('cashier')).map(item => item.id)).toEqual(['cash', 'stock', 'reports', 'cells'])
+  it.each(['cashier', 'counter'] as const)('gives the %s operator the same store areas', (role) => {
+    expect(dashboardShortcuts(profileWith(role)).map(item => item.id)).toEqual(['cash', 'stock', 'reports', 'cells'])
     expect(dashboardShortcuts(null)).toEqual([])
   })
 })

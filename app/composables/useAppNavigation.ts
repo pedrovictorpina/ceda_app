@@ -37,8 +37,8 @@ const sections: NavigationSection[] = [
     label: 'Operação da loja',
     tabs: [
       { label: 'Atendimento', icon: 'i-lucide-package-check', to: '/operacao', requires: 'store_operator' },
-      { label: 'Estoque', icon: 'i-lucide-boxes', to: '/operacao/estoque', requires: 'cashier' },
-      { label: 'Relatórios', icon: 'i-lucide-chart-no-axes-combined', to: '/operacao/relatorios', requires: 'cashier' }
+      { label: 'Estoque', icon: 'i-lucide-boxes', to: '/operacao/estoque', requires: 'store_operator' },
+      { label: 'Relatórios', icon: 'i-lucide-chart-no-axes-combined', to: '/operacao/relatorios', requires: 'store_operator' }
     ]
   }
 ]
@@ -78,7 +78,7 @@ export function useAppNavigation() {
     if (requirement === 'children_staff') return canTeachChildren(auth.profile)
     if (requirement === 'administrator') return canManageChurch(auth.profile)
     if (requirement === 'store_operator') return canOperateStore(auth.profile)
-    if (requirement === 'cashier') return canManageChurch(auth.profile) || hasRole(auth.profile, 'cashier')
+    if (requirement === 'cashier' || requirement === 'counter') return canOperateStore(auth.profile)
     return hasRole(auth.profile, requirement)
   }
 

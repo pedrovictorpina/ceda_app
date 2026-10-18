@@ -4,6 +4,7 @@ import type { RegistrationInput } from '~/utils/registration'
 import { birthdayProfileFields } from '../utils/birthdays'
 import { authErrorMessage, authFlowLink } from '../utils/authFlow'
 import { PasswordRecoveryGate } from '../utils/passwordRecovery'
+import { normalizeSystemRoles } from '../utils/systemRoles'
 
 export const useAuthStore = defineStore('auth', () => {
   const profile = ref<SessionProfile | null>(null)
@@ -103,7 +104,7 @@ export const useAuthStore = defineStore('auth', () => {
         name: row?.full_name || data.user.email || 'Membro',
         email: row?.email || data.user.email || '',
         avatarUrl: row?.avatar_path || undefined,
-        roles: roleRows?.length ? roleRows.map(item => item.role) : ['member'],
+        roles: normalizeSystemRoles(roleRows?.length ? roleRows.map(item => item.role) : ['member']),
         isApprovedGuardian: Boolean(guardianResult.data),
         isChildrenTeam: Boolean(teamResult.data),
         hasChildren: Boolean(childResult.count)

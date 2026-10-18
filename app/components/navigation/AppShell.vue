@@ -26,8 +26,7 @@ const isAdminView = computed(() => canUseAdminView.value && isAdministrationPath
 const roleLabel = computed(() => {
   if (hasRole(auth.profile, 'administrator')) return 'Administrador'
   if (hasRole(auth.profile, 'pastor')) return 'Pastor'
-  if (hasRole(auth.profile, 'cashier')) return 'Caixa'
-  if (hasRole(auth.profile, 'counter')) return 'Balcão/Entrega'
+  if (hasRole(auth.profile, 'cashier')) return 'Caixa e balcão'
   if (hasRole(auth.profile, 'teacher')) return 'Professor(a)'
   return 'Membro'
 })

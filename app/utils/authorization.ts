@@ -1,7 +1,8 @@
 import type { SessionProfile, SystemRole } from '~/types/domain'
+import { normalizeSystemRoles } from './systemRoles'
 
 export function hasRole(profile: SessionProfile | null, role: SystemRole): boolean {
-  return profile?.roles.includes(role) ?? false
+  return normalizeSystemRoles(profile?.roles).includes(role === 'counter' ? 'cashier' : role)
 }
 
 export function canManageChurch(profile: SessionProfile | null): boolean {
@@ -9,7 +10,7 @@ export function canManageChurch(profile: SessionProfile | null): boolean {
 }
 
 export function canOperateStore(profile: SessionProfile | null): boolean {
-  return canManageChurch(profile) || hasRole(profile, 'cashier') || hasRole(profile, 'counter')
+  return canManageChurch(profile) || hasRole(profile, 'cashier')
 }
 
 /** Professores formam a equipe infantil; a tabela legada children_team_members continua valendo. */

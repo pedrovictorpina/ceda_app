@@ -723,7 +723,7 @@ onMounted(async () => {
           />
         </div>
         <p class="mt-4 text-xs leading-5 text-muted">
-          Todo convite cria uma conta de membro. Papéis como administrador, pastor, caixa, balcão e professor só podem ser concedidos por um administrador em Pessoas e permissões.
+          Todo convite cria uma conta de membro. Papéis como administrador, pastor, caixa e balcão ou professor só podem ser concedidos por um administrador em Pessoas e permissões.
         </p>
         <UAlert
           v-if="inviteStatus"

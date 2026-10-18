@@ -1,5 +1,5 @@
 import type { SessionProfile } from '~/types/domain'
-import { canManageChurch, canOperateStore, canTeachChildren, hasRole } from './authorization'
+import { canManageChurch, canOperateStore, canTeachChildren } from './authorization'
 
 /* Estado de cada seção ------------------------------------------------------ */
 
@@ -190,15 +190,13 @@ interface ShortcutRule extends DashboardShortcut {
   allowed: (profile: SessionProfile | null) => boolean
 }
 
-const canManageStock = (profile: SessionProfile | null) => canManageChurch(profile) || hasRole(profile, 'cashier')
-
 const SHORTCUT_RULES: readonly ShortcutRule[] = [
   { id: 'content', label: 'Nova publicação', icon: 'i-lucide-megaphone', to: '/admin/conteudo?novo=1', allowed: canManageChurch },
   { id: 'event', label: 'Novo evento', icon: 'i-lucide-calendar-plus', to: '/admin/agenda?novo=1', allowed: canManageChurch },
   { id: 'people', label: 'Pessoas e papéis', icon: 'i-lucide-users-round', to: '/admin/pessoas', allowed: canManageChurch },
-  { id: 'cash', label: 'Caixa e pedidos', icon: 'i-lucide-package-check', to: '/operacao', allowed: canOperateStore },
-  { id: 'stock', label: 'Estoque', icon: 'i-lucide-boxes', to: '/operacao/estoque', allowed: canManageStock },
-  { id: 'reports', label: 'Relatórios', icon: 'i-lucide-chart-no-axes-combined', to: '/operacao/relatorios', allowed: canManageStock },
+  { id: 'cash', label: 'Caixa e balcão', icon: 'i-lucide-package-check', to: '/operacao', allowed: canOperateStore },
+  { id: 'stock', label: 'Estoque', icon: 'i-lucide-boxes', to: '/operacao/estoque', allowed: canOperateStore },
+  { id: 'reports', label: 'Relatórios', icon: 'i-lucide-chart-no-axes-combined', to: '/operacao/relatorios', allowed: canOperateStore },
   { id: 'children', label: 'Turmas infantis', icon: 'i-lucide-sprout', to: '/sementinhas/turmas', allowed: canTeachChildren },
   { id: 'cells', label: 'Células', icon: 'i-lucide-house-heart', to: '/celulas', allowed: profile => profile !== null },
   { id: 'audit', label: 'Auditoria', icon: 'i-lucide-scroll-text', to: '/admin/auditoria', allowed: canManageChurch }

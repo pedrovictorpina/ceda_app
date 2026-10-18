@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { canManageChurch, hasRole } from '~/utils/authorization'
+import { canOperateStore } from '~/utils/authorization'
 
 definePageMeta({ middleware: ['auth', 'operations', 'inventory'] })
 useSeoMeta({ title: 'Controle de estoque' })
@@ -45,7 +45,7 @@ const removeExistingPhoto = ref(false)
 const showExcludedProducts = ref(false)
 const cameraCapture = ref<string | undefined>()
 
-const canManageInventory = computed(() => canManageChurch(auth.profile) || hasRole(auth.profile, 'cashier'))
+const canManageInventory = computed(() => canOperateStore(auth.profile))
 const productItems = computed(() => products.value.filter(product => product.active).map(product => ({ label: `${product.name} (${product.stock_available})`, value: product.id })))
 const activeProducts = computed(() => products.value.filter(product => product.active))
 const excludedProducts = computed(() => products.value.filter(product => !product.active))

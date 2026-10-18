@@ -1,4 +1,4 @@
-import { canManageChurch, hasRole } from '~/utils/authorization'
+import { canOperateStore } from '~/utils/authorization'
 
 export default defineNuxtRouteMiddleware(async () => {
   if (import.meta.server) return
@@ -6,5 +6,5 @@ export default defineNuxtRouteMiddleware(async () => {
   const auth = useAuthStore()
   if (auth.loading) await auth.hydrate()
   if (!auth.profile) return navigateTo('/entrar')
-  if (!canManageChurch(auth.profile) && !hasRole(auth.profile, 'cashier')) return navigateTo('/operacao')
+  if (!canOperateStore(auth.profile)) return navigateTo('/operacao')
 })
