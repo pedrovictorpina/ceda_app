@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.3 — 2026-10-18
+
+- Menu mobile refeito em tela cheia com grade de três colunas, busca e botão de fechar sempre acessíveis e rolagem vertical apenas na lista.
+- Atalhos da barra inferior também aparecem no menu completo, com uma seção de conta e ações de administração e saída sem rótulos cortados.
+- Recentes compactos excluem a página atual; limpar a busca mantém o campo pronto para digitar. Fechamento, foco do teclado e permissões foram preservados.
+
+Validação: lint, typecheck, build e 295 testes unitários aprovados; menu conferido na versão compilada em 320, 390, 412 e 667 px, temas claro/escuro, perfis de membro/caixa/administrador e simulação de viewport reduzido para teclado. Nenhuma alteração de banco nesta versão.
+
 ## 0.2.2 — 2026-10-18
 
 - Caixa e balcão unificados em uma função, com acesso a pagamentos, entregas, estoque e relatórios; contas anteriores continuam compatíveis.

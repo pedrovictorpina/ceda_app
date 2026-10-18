@@ -60,13 +60,17 @@ function groupItems(items: NavigationItem[]): MenuGroup[] {
 }
 
 const sidebarGroups = computed(() => groupItems(activeItems.value))
-// No celular, o menu não repete o que já está na barra inferior.
-const sheetGroups = computed(() => groupItems(activeItems.value.filter(item => !item.webOnly && !bottomItems.value.includes(item))))
+// O menu em tela cheia reúne todos os destinos, inclusive os da barra inferior.
+const mobileMenuGroups = computed<MenuGroup[]>(() => [
+  ...groupItems(activeItems.value.filter(item => !item.webOnly)),
+  { id: 'account', label: 'Sua conta', items: accountEntries }
+])
 const searchIndex = computed(() => [
   ...buildSearchIndex(activeItems.value.filter(item => !item.webOnly), visibleSections.value),
   ...accountEntries
 ])
 const recentEntries = computed(() => recent.value.flatMap((to) => {
+  if (to === route.path) return []
   const entry = searchIndex.value.find(candidate => candidate.to === to)
   return entry ? [entry] : []
 }))
@@ -290,10 +294,10 @@ watch(() => route.path, (path) => {
 
     <NavigationAppMenuSheet
       v-model:open="menuOpen"
-      :groups="sheetGroups"
+      :groups="mobileMenuGroups"
       :search-index="searchIndex"
       :recent="recentEntries"
-      :active-to="activeItem?.to"
+      :active-to="activeItem?.to || route.path"
       :can-use-admin-view="canUseAdminView"
       :is-admin-view="isAdminView"
       @change-view="changeView(isAdminView ? 'member' : 'administrator')"
