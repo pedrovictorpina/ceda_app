@@ -1,3 +1,5 @@
+export const CHURCH_ADDRESS = 'R. Tibúrcio de Azevedo, 305 - Americana, Alvorada - RS, 94820-480'
+
 /** Public church contacts only. No member or leader contact is used as a substitute. */
 export function officialPhoneLink(value: string): string {
   const digits = value.replace(/\D/g, '')

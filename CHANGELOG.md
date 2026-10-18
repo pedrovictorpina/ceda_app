@@ -2,6 +2,7 @@
 
 ## Não publicado
 
+- Endereço oficial da igreja atualizado nas páginas de visita e nos links de localização do mapa.
 - A sessão salva é verificada na entrada do site e do aplicativo, com uma tela de carregamento até o perfil e o destino estarem prontos, sem exigir navegação adicional.
 - Falhas de verificação mantêm as informações públicas acessíveis e oferecem uma nova tentativa; os fluxos de recuperação de senha continuam independentes.
 - O fundo de seleção, hover e foco dos menus acompanha o formato arredondado de cada botão.

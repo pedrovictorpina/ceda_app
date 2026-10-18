@@ -1,3 +1,5 @@
+import { CHURCH_ADDRESS } from './app/utils/officialContact'
+
 export default defineNuxtConfig({
   modules: ['@nuxt/eslint', '@nuxt/ui', '@pinia/nuxt', '@vite-pwa/nuxt'],
   devtools: { enabled: true },
@@ -27,7 +29,7 @@ export default defineNuxtConfig({
       churchWebsiteUrl: process.env.NUXT_PUBLIC_CHURCH_WEBSITE_URL || 'https://ceda-app-beige.vercel.app',
       instagramUrl: process.env.NUXT_PUBLIC_INSTAGRAM_URL || 'https://www.instagram.com/igrejaceda/',
       youtubeUrl: process.env.NUXT_PUBLIC_YOUTUBE_URL || 'https://www.youtube.com/@IgrejaCEDA',
-      churchAddress: process.env.NUXT_PUBLIC_CHURCH_ADDRESS || '',
+      churchAddress: process.env.NUXT_PUBLIC_CHURCH_ADDRESS || CHURCH_ADDRESS,
       churchPhone: process.env.NUXT_PUBLIC_CHURCH_PHONE || '',
       churchWhatsapp: process.env.NUXT_PUBLIC_CHURCH_WHATSAPP || '',
       churchEmail: process.env.NUXT_PUBLIC_CHURCH_EMAIL || '',

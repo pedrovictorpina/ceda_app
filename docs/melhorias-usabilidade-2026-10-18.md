@@ -4,7 +4,9 @@ Data: 18/10/2026. Implementação local na branch `codex/nuxt-ui-project`, a par
 
 ## Resultado e alcance
 
-Os achados A01–A12 receberam alterações no código. O trabalho priorizou a confiança nas confirmações, a continuidade das tarefas, a informação publicada, a privacidade e os padrões compartilhados do Nuxt UI. O cadastro de endereço e contato oficial de recepção continua pendente de dados confirmados da igreja.
+Os achados A01–A12 receberam alterações no código. O trabalho priorizou a confiança nas confirmações, a continuidade das tarefas, a informação publicada, a privacidade e os padrões compartilhados do Nuxt UI. O endereço oficial foi confirmado e adicionado ao código; o contato direto da recepção ainda depende de dados confirmados da igreja.
+
+Atualização de endereço: **R. Tibúrcio de Azevedo, 305 - Americana, Alvorada - RS, 94820-480**. O dado foi informado pelo responsável e conferido localmente nas páginas Contato, Sobre nós e Horários de Culto, incluindo os links de mapa disponíveis. A publicação desta atualização ainda está pendente.
 
 “10/10” é a meta de qualidade solicitada. Este registro não atribui uma nova nota: ainda não foram medidos conclusão de tarefas, esforço ou compreensão com usuários reais. A implementação local, os testes de lógica, os testes de políticas no banco e as verificações de navegador têm alcances diferentes, discriminados abaixo.
 
@@ -81,7 +83,7 @@ A versão de publicação é **0.2.0**; o andamento e a prontidão do deploy dev
 
 1. Homologar os fluxos autenticados completos pelo cliente Supabase/PostgREST, incluindo troca de conta, publicação/cancelamento, solicitação/análise e retorno após falha de rede. A migração já foi aplicada e suas permissões foram conferidas em produção.
 2. Validar SMTP e URLs de retorno com e-mail de teste, link de recuperação, senha expirada, reenvio e retorno à tarefa original. Não registrar tokens ou credenciais nas evidências.
-3. Confirmar endereço, mapa e contato público oficial da recepção; configurar somente dados autorizados da igreja. O Instagram oficial é alternativa explícita enquanto esses dados faltam.
+3. Publicar o endereço confirmado e seus links de mapa; confirmar o contato público oficial da recepção. O Instagram oficial continua como alternativa de atendimento enquanto o contato direto não é informado.
 4. Homologar importação de calendário, notificações internas, teclado virtual, leitor de tela, texto ampliado e experiência Capacitor/APK em aparelho físico.
 5. Observar pessoas representativas dos perfis de visitante, membro, responsável, líder/professor, caixa/balcão e administrador. Medir conclusão sem ajuda, desvios, erros, recuperação e compreensão do público das ações.
 

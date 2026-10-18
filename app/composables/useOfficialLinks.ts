@@ -1,11 +1,11 @@
-import { officialEmailLink, officialMapLink, officialPhoneLink, officialWhatsAppLink } from '~/utils/officialContact'
+import { CHURCH_ADDRESS, officialEmailLink, officialMapLink, officialPhoneLink, officialWhatsAppLink } from '~/utils/officialContact'
 
 export function useOfficialLinks() {
   const config = useRuntimeConfig()
   const website = computed(() => String(config.public.churchWebsiteUrl || ''))
   const instagram = computed(() => String(config.public.instagramUrl || ''))
   const youtube = computed(() => String(config.public.youtubeUrl || ''))
-  const address = computed(() => String(config.public.churchAddress || ''))
+  const address = computed(() => String(config.public.churchAddress || CHURCH_ADDRESS).trim())
   const phone = computed(() => String(config.public.churchPhone || '').trim())
   const email = computed(() => String(config.public.churchEmail || '').trim())
   const phoneLink = computed(() => officialPhoneLink(phone.value))
