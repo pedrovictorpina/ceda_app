@@ -262,7 +262,7 @@ async function loadRecentDays() {
   if (!$supabase || !cashFlowAvailable.value) return
   const { data } = await $supabase.from('store_cash_days')
     .select('id, business_date, status, started_at, closed_at')
-    .eq('status', 'closed').order('business_date', { ascending: false }).limit(8)
+    .eq('status', 'closed').order('created_at', { ascending: false }).limit(8)
   recentDays.value = (data || []) as CashDay[]
 }
 
@@ -405,12 +405,12 @@ watch(selectedCashDayId, () => {
       v-if="recentDays.length"
       class="mb-5 flex flex-wrap items-center gap-2"
     >
-      <span class="mr-1 text-sm font-medium text-muted">Dias de caixa:</span>
+      <span class="mr-1 text-sm font-medium text-muted">Operações:</span>
       <UButton
         v-for="day in recentDays"
         :key="day.id"
         :to="`/operacao/relatorios?dia=${day.id}`"
-        :label="new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }).format(new Date(`${day.business_date}T12:00:00Z`))"
+        :label="day.started_at ? new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'America/Sao_Paulo' }).format(new Date(day.started_at)) : `${day.business_date.split('-').reverse().join('/')} · não iniciada`"
         :color="selectedCashDayId === day.id ? 'primary' : 'neutral'"
         :variant="selectedCashDayId === day.id ? 'solid' : 'outline'"
         size="sm"
@@ -502,11 +502,17 @@ watch(selectedCashDayId, () => {
       :description="feedback"
     />
 
+    <UAlert
+      v-if="cashDay"
+      class="mt-5"
+      color="neutral"
+      variant="subtle"
+      description="Os lançamentos financeiros são agrupados por data e estão disponíveis em Outros períodos."
+    />
     <StoreFinanceLedger
-      v-if="!loading && (cashDay || (effectiveDates.start && effectiveDates.end))"
-      :start="cashDay?.business_date || effectiveDates.start"
-      :end="cashDay?.business_date || effectiveDates.end"
-      :cash-day-id="cashDay?.id"
+      v-if="!loading && !cashDay && effectiveDates.start && effectiveDates.end"
+      :start="effectiveDates.start"
+      :end="effectiveDates.end"
     />
 
     <section

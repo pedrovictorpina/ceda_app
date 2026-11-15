@@ -110,7 +110,7 @@ async function loadOperation(silent = false) {
     $supabase.from('store_products').select('*').order('name'),
     ordersQuery.in('status', ['awaiting_payment', 'ready_for_pickup']).order('created_at'),
     cashFlowAvailable.value
-      ? $supabase.from('store_cash_days').select('id, business_date, status, started_at, auto_close_at, closed_at').order('business_date', { ascending: false }).limit(1).maybeSingle()
+      ? $supabase.from('store_cash_days').select('id, business_date, status, started_at, auto_close_at, closed_at').order('created_at', { ascending: false }).limit(1).maybeSingle()
       : Promise.resolve({ data: null, error: null })
   ])
   products.value = (productsResult.data || []) as Product[]
@@ -418,6 +418,12 @@ onUnmounted(() => {
           :to="`/operacao/relatorios?dia=${cashDay.id}`"
           label="Ver relatório do dia"
           icon="i-lucide-chart-no-axes-combined"
+        />
+        <UButton
+          label="Preparar nova operação"
+          icon="i-lucide-calendar-plus"
+          :loading="saving"
+          @click="prepareCashDay"
         />
       </div>
     </section>

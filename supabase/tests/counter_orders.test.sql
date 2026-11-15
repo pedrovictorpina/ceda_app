@@ -1,5 +1,5 @@
 begin;
-select plan(24);
+select plan(29);
 insert into auth.users (id, email, raw_app_meta_data) values
  ('72000000-0000-4000-8000-000000000001', 'operator@counter.test', '{"roles":["cashier"]}'),
  ('72000000-0000-4000-8000-000000000002', 'member@counter.test', '{"roles":["member"]}');
@@ -42,5 +42,16 @@ select throws_ok($$select public.create_counter_order('72000000-0000-4000-8000-0
 select is((select count(*)::integer from public.store_orders where id = '72000000-0000-4000-8000-000000000010'), 0, 'member cannot see counter order');
 select lives_ok($$insert into public.store_orders (id, buyer_id) values ('72000000-0000-4000-8000-000000000014', '72000000-0000-4000-8000-000000000002')$$, 'member order remains available');
 select is((select buyer_name from public.store_orders where id = '72000000-0000-4000-8000-000000000014'), 'Membro', 'member name still comes from profile');
+reset role;
+select set_config('request.jwt.claims', '{"sub":"72000000-0000-4000-8000-000000000001","role":"authenticated","app_metadata":{"roles":["cashier"]}}', true);
+set local role authenticated;
+update public.store_orders set status = 'cancelled' where id = '72000000-0000-4000-8000-000000000014';
+select lives_ok($$select public.close_store_cash_day((select id from public.store_cash_days where status = 'open'))$$, 'first operation can close');
+select lives_ok($$select public.create_store_cash_day()$$, 'second operation can be prepared on the same date');
+select is((select count(*)::integer from public.store_cash_days), 2, 'operations keep separate records');
+insert into public.store_cash_day_products (cash_day_id, product_id) select id, '72000000-0000-4000-8000-000000000003' from public.store_cash_days where status = 'preparing';
+select public.start_store_cash_day((select id from public.store_cash_days where status = 'preparing'), null);
+select lives_ok($$select public.create_counter_order('72000000-0000-4000-8000-000000000016', null, '[{"product_id":"72000000-0000-4000-8000-000000000003","quantity":1}]')$$, 'second operation accepts orders');
+select is((select daily_order_number from public.store_orders where id = '72000000-0000-4000-8000-000000000016'), 4::bigint, 'daily order number continues across operations');
 select * from finish();
 rollback;
