@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { canOperateStore } from '~/utils/authorization'
 import { randomId } from '~/utils/randomId'
+import { parseMoneyInput } from '~/utils/storeMoney'
 
 definePageMeta({ middleware: ['auth', 'operations', 'inventory'] })
 useSeoMeta({ title: 'Controle de estoque' })
@@ -46,6 +47,7 @@ const removeExistingPhoto = ref(false)
 const showExcludedProducts = ref(false)
 const productSearch = ref('')
 const productModalOpen = ref(false)
+const previewProduct = ref<Product | null>(null)
 
 const canManageInventory = computed(() => canOperateStore(auth.profile))
 const editingProduct = computed(() => products.value.find(product => product.id === editingProductId.value))
@@ -61,7 +63,8 @@ const canSaveEdit = computed(() => editForm.name.trim().length >= 2
   && editForm.name.trim().length <= 120
   && typeof editForm.salePrice === 'number'
   && Number.isFinite(editForm.salePrice)
-  && editForm.salePrice >= 0)
+  && editForm.salePrice >= 0
+  && editForm.salePrice <= 9999999999.99)
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
@@ -215,7 +218,7 @@ async function setProductActive(product: Product, active: boolean) {
 
 async function createProduct() {
   const { $supabase } = useNuxtApp()
-  if (!$supabase || !auth.profile || !canManageInventory.value || !productForm.name.trim() || productForm.salePrice < 0) return
+  if (!$supabase || !auth.profile || !canManageInventory.value || !productForm.name.trim() || !Number.isFinite(productForm.salePrice) || productForm.salePrice < 0 || productForm.salePrice > 9999999999.99) return
   saving.value = true
   const productId = randomId()
   let imagePath: string | null = null
@@ -262,7 +265,7 @@ async function createProduct() {
 
 async function addBatch() {
   const { $supabase } = useNuxtApp()
-  if (!$supabase || !auth.profile || !canManageInventory.value || !editingProductId.value || !Number.isFinite(batchForm.quantity) || batchForm.quantity <= 0) return
+  if (!$supabase || !auth.profile || !canManageInventory.value || !editingProductId.value || !Number.isFinite(batchForm.quantity) || batchForm.quantity <= 0 || (batchForm.unitCost !== null && (!Number.isFinite(batchForm.unitCost) || batchForm.unitCost > 9999999999.99))) return
   saving.value = true
   const { error } = await $supabase.from('inventory_batches').insert({
     product_id: editingProductId.value, quantity_received: batchForm.quantity, quantity_on_hand: batchForm.quantity,
@@ -427,18 +430,19 @@ onUnmounted(() => {
               hint="Valor cobrado ao membro"
             >
               <UInput
-                v-model.number="productForm.salePrice"
-                type="number"
-                min="0"
-                step="0.01"
+                :model-value="formatMoney(productForm.salePrice)"
+                type="text"
+                inputmode="numeric"
+                maxlength="22"
                 class="w-full"
+                @update:model-value="productForm.salePrice = parseMoneyInput(String($event))"
               />
             </UFormField>
             <UButton
               block
               class="min-h-11"
               :loading="saving"
-              :disabled="!productForm.name.trim()"
+              :disabled="!productForm.name.trim() || !Number.isFinite(productForm.salePrice) || productForm.salePrice > 9999999999.99"
               label="Cadastrar produto"
               icon="i-lucide-plus"
               @click="createProduct"
@@ -504,7 +508,7 @@ onUnmounted(() => {
       </UFormField>
       <div
         v-if="loading"
-        class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+        class="mt-5 grid grid-cols-2 gap-2 sm:gap-4 xl:grid-cols-3"
       >
         <USkeleton
           v-for="index in 3"
@@ -514,23 +518,33 @@ onUnmounted(() => {
       </div>
       <div
         v-else
-        class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+        class="mt-5 grid grid-cols-2 gap-2 sm:gap-4 xl:grid-cols-3"
       >
         <UCard
           v-for="product in visibleProducts"
           :key="product.id"
-          class="overflow-hidden"
+          class="min-w-0 overflow-hidden"
+          :ui="{ body: 'p-3 sm:p-6' }"
         >
-          <img
+          <UButton
             v-if="product.image_path"
-            :src="productImageUrl(product.image_path)"
-            :alt="product.name"
-            class="mb-4 aspect-video w-full rounded-xl object-cover"
-            loading="lazy"
+            type="button"
+            color="neutral"
+            variant="ghost"
+            class="focus-ring mb-4 w-full rounded-xl p-0"
+            :aria-label="`Ampliar foto de ${product.name}`"
+            @click="previewProduct = product"
           >
-          <div class="flex items-start justify-between gap-3">
+            <img
+              :src="productImageUrl(product.image_path)"
+              :alt="product.name"
+              class="aspect-video w-full rounded-xl object-cover"
+              loading="lazy"
+            >
+          </UButton>
+          <div class="flex flex-wrap items-start justify-between gap-2">
             <div class="min-w-0">
-              <p class="truncate font-semibold">
+              <p class="break-words font-semibold">
                 {{ product.name }}
               </p><p class="mt-1 text-sm text-muted">
                 {{ formatMoney(product.sale_price) }} por unidade
@@ -606,7 +620,7 @@ onUnmounted(() => {
         </UCard>
         <UCard
           v-if="!activeProducts.length"
-          class="sm:col-span-2 xl:col-span-3"
+          class="col-span-2 xl:col-span-3"
         >
           <div class="flex flex-col items-center py-7 text-center">
             <div class="grid size-12 place-items-center rounded-full bg-muted">
@@ -622,6 +636,21 @@ onUnmounted(() => {
           </div>
         </UCard>
       </div>
+      <UModal
+        v-if="previewProduct?.image_path"
+        :open="true"
+        :title="previewProduct.name"
+        description="Foto ampliada do produto."
+        @update:open="!$event && (previewProduct = null)"
+      >
+        <template #body>
+          <img
+            :src="productImageUrl(previewProduct.image_path)"
+            :alt="previewProduct.name"
+            class="max-h-[75dvh] w-full object-contain"
+          >
+        </template>
+      </UModal>
       <UModal
         v-if="editingProduct"
         :open="true"
@@ -656,11 +685,12 @@ onUnmounted(() => {
               </UFormField>
               <UFormField label="Preço de venda">
                 <UInput
-                  v-model.number="editForm.salePrice"
-                  type="number"
-                  min="0"
-                  step="0.01"
+                  :model-value="formatMoney(editForm.salePrice)"
+                  type="text"
+                  inputmode="numeric"
+                  maxlength="22"
                   class="w-full"
+                  @update:model-value="editForm.salePrice = parseMoneyInput(String($event))"
                 />
               </UFormField>
               <UFormField
@@ -734,10 +764,11 @@ onUnmounted(() => {
               </UFormField>
               <UFormField label="Custo unitário opcional">
                 <UInput
-                  v-model.number="batchForm.unitCost"
-                  type="number"
-                  min="0"
-                  step="0.01"
+                  :model-value="batchForm.unitCost === null ? '' : formatMoney(batchForm.unitCost)"
+                  type="text"
+                  inputmode="numeric"
+                  maxlength="22"
+                  @update:model-value="batchForm.unitCost = /\d/.test(String($event)) ? parseMoneyInput(String($event)) : null"
                 />
               </UFormField>
               <UFormField label="Validade opcional">
@@ -745,7 +776,7 @@ onUnmounted(() => {
               </UFormField>
               <UButton
                 :loading="saving"
-                :disabled="!Number.isFinite(batchForm.quantity) || batchForm.quantity <= 0"
+                :disabled="!Number.isFinite(batchForm.quantity) || batchForm.quantity <= 0 || (batchForm.unitCost !== null && (!Number.isFinite(batchForm.unitCost) || batchForm.unitCost > 9999999999.99))"
                 label="Registrar entrada"
                 icon="i-lucide-package-plus"
                 @click="addBatch"

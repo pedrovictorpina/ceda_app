@@ -25,7 +25,9 @@ interface StoreOrder {
   note: string | null
   buyer_name: string | null
   order_source?: 'member' | 'counter'
-  store_order_items: Array<{ quantity: number, product: { name: string } | { name: string }[] | null }>
+  cash_day_id: string | null
+  updated_at: string
+  store_order_items: Array<{ product_id: string, quantity: number, unit_price: number, product: { name: string } | { name: string }[] | null }>
 }
 
 interface CashDay {
@@ -58,6 +60,8 @@ const saving = ref(false)
 const feedback = ref('')
 const creatingOrder = ref(false)
 const counterOrderBusy = ref(false)
+const editingOrder = ref<StoreOrder | null>(null)
+const editingOrderBusy = ref(false)
 
 const canManageInventory = computed(() => canOperateStore(auth.profile))
 const canConfirmOrders = canManageInventory
@@ -113,8 +117,8 @@ async function loadOperation(silent = false) {
     cashFlowAvailable.value = !error
   } else if (cashFlowAvailable.value) await $supabase.rpc('sync_store_cash_day')
   const ordersQuery = cashFlowAvailable.value
-    ? $supabase.from('store_orders').select('id, order_number, daily_order_number, daily_order_date, status, total_amount, created_at, note, buyer_name, order_source, store_order_items(quantity, product:store_products(name))')
-    : $supabase.from('store_orders').select('id, order_number, daily_order_number, daily_order_date, status, total_amount, created_at, note, store_order_items(quantity, product:store_products(name))')
+    ? $supabase.from('store_orders').select('id, order_number, daily_order_number, daily_order_date, status, total_amount, created_at, updated_at, cash_day_id, note, buyer_name, order_source, store_order_items(product_id, quantity, unit_price, product:store_products(name))')
+    : $supabase.from('store_orders').select('id, order_number, daily_order_number, daily_order_date, status, total_amount, created_at, updated_at, cash_day_id, note, store_order_items(product_id, quantity, unit_price, product:store_products(name))')
   const [productsResult, ordersResult, cashDayResult] = await Promise.all([
     $supabase.from('store_products').select('*').order('name'),
     ordersQuery.in('status', ['awaiting_payment', 'ready_for_pickup']).order('created_at'),
@@ -327,6 +331,31 @@ onUnmounted(() => {
           @refresh="loadOperation(true)"
           @busy="counterOrderBusy = $event"
           @close="creatingOrder = false"
+        />
+      </template>
+    </UModal>
+
+    <UModal
+      v-if="editingOrder?.cash_day_id"
+      :open="true"
+      :title="`Editar pedido ${displayOrderNumber(editingOrder)}`"
+      description="Altere os produtos e quantidades do pedido."
+      :dismissible="!editingOrderBusy"
+      :close="!editingOrderBusy"
+      :ui="{ content: 'left-0 top-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 rounded-none sm:left-1/2 sm:top-1/2 sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-2rem)] sm:max-w-4xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg', header: 'pr-14 pt-[max(1rem,env(safe-area-inset-top))]', close: 'top-[max(1rem,env(safe-area-inset-top))]', body: 'overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))]' }"
+      @update:open="!$event && (editingOrder = null)"
+    >
+      <template #body>
+        <StoreOrderEditForm
+          :order-id="editingOrder.id"
+          :cash-day-id="editingOrder.cash_day_id"
+          :updated-at="editingOrder.updated_at"
+          :items="editingOrder.store_order_items"
+          :products="products"
+          :paid="editingOrder.status === 'ready_for_pickup'"
+          @saved="feedback = 'Pedido atualizado.'; loadOperation(true)"
+          @busy="editingOrderBusy = $event"
+          @close="editingOrder = null"
         />
       </template>
     </UModal>
@@ -609,6 +638,17 @@ onUnmounted(() => {
             </p>
           </div>
           <template #footer>
+            <UButton
+              v-if="canManageInventory && order.cash_day_id"
+              block
+              class="mb-3"
+              color="neutral"
+              variant="outline"
+              label="Editar pedido"
+              icon="i-lucide-pencil"
+              :disabled="saving"
+              @click="editingOrder = order"
+            />
             <USelect
               v-if="cashFlowAvailable && order.status === 'awaiting_payment' && canConfirmOrders"
               v-model="paymentMethods[order.id]"
