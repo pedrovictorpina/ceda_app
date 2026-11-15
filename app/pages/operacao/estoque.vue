@@ -35,7 +35,7 @@ const productForm = reactive({ name: '', description: '', salePrice: 0 })
 const productPhoto = ref<File | null>(null)
 const productPhotoPreview = ref('')
 const productPhotoInputKey = ref(0)
-const batchForm = reactive({ productId: '', quantity: 1, unitCost: null as number | null, expiresOn: '' })
+const batchForm = reactive({ quantity: 1, unitCost: null as number | null, expiresOn: '' })
 const editingProductId = ref<string | null>(null)
 const deletingProductId = ref<string | null>(null)
 const editForm = reactive({ name: '', description: '', salePrice: 0 })
@@ -48,7 +48,7 @@ const productSearch = ref('')
 const productModalOpen = ref(false)
 
 const canManageInventory = computed(() => canOperateStore(auth.profile))
-const productItems = computed(() => products.value.filter(product => product.active).map(product => ({ label: `${product.name} (${product.stock_available})`, value: product.id })))
+const editingProduct = computed(() => products.value.find(product => product.id === editingProductId.value))
 const activeProducts = computed(() => products.value.filter(product => product.active))
 const visibleProducts = computed(() => {
   const term = productSearch.value.trim().toLocaleLowerCase('pt-BR')
@@ -119,12 +119,16 @@ function cancelEdit() {
   editingProductId.value = null
   clearEditPhoto()
   removeExistingPhoto.value = false
+  batchForm.quantity = 1
+  batchForm.unitCost = null
+  batchForm.expiresOn = ''
 }
 
 function startEdit(product: Product) {
   cancelEdit()
   deletingProductId.value = null
   editingProductId.value = product.id
+  feedback.value = ''
   editForm.name = product.name
   editForm.description = product.description || ''
   editForm.salePrice = Number(product.sale_price)
@@ -249,24 +253,24 @@ async function createProduct() {
     productForm.salePrice = 0
     clearProductPhoto()
     productModalOpen.value = false
-    batchForm.productId = productId
-    feedback.value = 'Produto cadastrado. Agora adicione uma entrada de estoque.'
     await loadInventory()
+    const product = products.value.find(item => item.id === productId)
+    if (product) startEdit(product)
+    feedback.value = product ? 'Produto cadastrado. Agora adicione uma entrada de estoque.' : 'Produto cadastrado. Atualize a lista para adicionar estoque.'
   }
 }
 
 async function addBatch() {
   const { $supabase } = useNuxtApp()
-  if (!$supabase || !auth.profile || !canManageInventory.value || !batchForm.productId || batchForm.quantity <= 0) return
+  if (!$supabase || !auth.profile || !canManageInventory.value || !editingProductId.value || !Number.isFinite(batchForm.quantity) || batchForm.quantity <= 0) return
   saving.value = true
   const { error } = await $supabase.from('inventory_batches').insert({
-    product_id: batchForm.productId, quantity_received: batchForm.quantity, quantity_on_hand: batchForm.quantity,
+    product_id: editingProductId.value, quantity_received: batchForm.quantity, quantity_on_hand: batchForm.quantity,
     unit_cost: batchForm.unitCost, expires_on: batchForm.expiresOn || null, received_by: auth.profile.id
   })
   saving.value = false
   if (error) feedback.value = 'Não foi possível registrar a entrada de estoque.'
   else {
-    batchForm.productId = ''
     batchForm.quantity = 1
     batchForm.unitCost = null
     batchForm.expiresOn = ''
@@ -312,13 +316,6 @@ onUnmounted(() => {
         variant="outline"
         class="min-h-11"
         @click="productModalOpen = true"
-      />
-      <UButton
-        to="#entrada-estoque"
-        label="Entrada de estoque"
-        color="neutral"
-        variant="outline"
-        class="min-h-11"
       />
       <UButton
         icon="i-lucide-refresh-cw"
@@ -372,162 +369,83 @@ onUnmounted(() => {
       v-if="canManageInventory"
       class="mt-6"
     >
-      <div class="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p class="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
-            Catálogo e entradas
-          </p><h2 class="mt-1 text-2xl font-bold tracking-tight">
-            Abasteça a loja
-          </h2>
-        </div>
-        <p class="max-w-md text-sm text-muted">
-          Cadastre o produto uma vez e registre cada recebimento como um lote para manter o saldo confiável.
-        </p>
-      </div>
-      <div>
-        <UModal
-          v-model:open="productModalOpen"
-          title="Cadastrar produto"
-          description="Depois, registre a entrada no estoque."
-          :ui="{ content: 'left-0 top-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 rounded-none sm:left-1/2 sm:top-1/2 sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-2rem)] sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg', header: 'pr-14 pt-[max(1rem,env(safe-area-inset-top))]', close: 'top-[max(1rem,env(safe-area-inset-top))]', body: 'overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))]' }"
-        >
-          <template #body>
-            <div class="space-y-4">
-              <UFormField
-                label="Nome"
-                hint="Como aparecerá para o membro"
-              >
-                <UInput
-                  v-model="productForm.name"
-                  placeholder="Ex.: Café coado"
-                  icon="i-lucide-tag"
-                  class="w-full"
-                />
-              </UFormField>
-              <UFormField label="Descrição">
-                <UTextarea
-                  v-model="productForm.description"
-                  :rows="2"
-                  placeholder="Ex.: Preparado na hora"
-                  class="w-full"
-                />
-              </UFormField>
-              <UFormField
-                label="Foto do produto (opcional)"
-                hint="JPG, PNG ou WebP de até 5 MB"
-              >
-                <StorePhotoPicker
-                  :input-key="productPhotoInputKey"
-                  @file="selectProductPhoto"
-                />
-              </UFormField>
-              <div
-                v-if="productPhotoPreview"
-                class="flex items-center gap-3"
-              >
-                <img
-                  :src="productPhotoPreview"
-                  alt="Prévia da foto do produto"
-                  class="size-20 rounded-xl object-cover"
-                >
-                <UButton
-                  label="Remover foto"
-                  color="neutral"
-                  variant="ghost"
-                  icon="i-lucide-x"
-                  @click="clearProductPhoto"
-                />
-              </div>
-              <UFormField
-                label="Preço de venda"
-                hint="Valor cobrado ao membro"
-              >
-                <UInput
-                  v-model.number="productForm.salePrice"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  class="w-full"
-                />
-              </UFormField>
-              <UButton
-                block
-                class="min-h-11"
-                :loading="saving"
-                :disabled="!productForm.name.trim()"
-                label="Cadastrar produto"
-                icon="i-lucide-plus"
-                @click="createProduct"
-              />
-            </div>
-          </template>
-        </UModal>
-        <UCard
-          id="entrada-estoque"
-          class="scroll-mt-4 overflow-hidden"
-        >
-          <template #header>
-            <div class="flex items-start gap-3">
-              <div class="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary">
-                <UIcon
-                  name="i-lucide-boxes"
-                  class="size-5"
-                />
-              </div><div>
-                <h3 class="font-semibold">
-                  Entrada de estoque
-                </h3><p class="mt-0.5 text-sm text-muted">
-                  Registre um lote para atualizar o saldo.
-                </p>
-              </div>
-            </div>
-          </template>
+      <UModal
+        v-model:open="productModalOpen"
+        title="Cadastrar produto"
+        description="Depois, registre a entrada no estoque."
+        :ui="{ content: 'left-0 top-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 rounded-none sm:left-1/2 sm:top-1/2 sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-2rem)] sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg', header: 'pr-14 pt-[max(1rem,env(safe-area-inset-top))]', close: 'top-[max(1rem,env(safe-area-inset-top))]', body: 'overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))]' }"
+      >
+        <template #body>
           <div class="space-y-4">
             <UFormField
-              label="Produto"
-              hint="Selecione um item já cadastrado"
+              label="Nome"
+              hint="Como aparecerá para o membro"
             >
-              <USelect
-                v-model="batchForm.productId"
-                :items="productItems"
+              <UInput
+                v-model="productForm.name"
+                placeholder="Ex.: Café coado"
+                icon="i-lucide-tag"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Descrição">
+              <UTextarea
+                v-model="productForm.description"
+                :rows="2"
+                placeholder="Ex.: Preparado na hora"
                 class="w-full"
               />
             </UFormField>
             <UFormField
-              label="Quantidade"
-              hint="Aceita unidades fracionadas"
+              label="Foto do produto (opcional)"
+              hint="JPG, PNG ou WebP de até 5 MB"
             >
-              <UInput
-                v-model.number="batchForm.quantity"
-                type="number"
-                min="0.001"
-                step="0.001"
+              <StorePhotoPicker
+                :input-key="productPhotoInputKey"
+                @file="selectProductPhoto"
               />
             </UFormField>
-            <UFormField label="Custo unitário opcional">
+            <div
+              v-if="productPhotoPreview"
+              class="flex items-center gap-3"
+            >
+              <img
+                :src="productPhotoPreview"
+                alt="Prévia da foto do produto"
+                class="size-20 rounded-xl object-cover"
+              >
+              <UButton
+                label="Remover foto"
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-x"
+                @click="clearProductPhoto"
+              />
+            </div>
+            <UFormField
+              label="Preço de venda"
+              hint="Valor cobrado ao membro"
+            >
               <UInput
-                v-model.number="batchForm.unitCost"
+                v-model.number="productForm.salePrice"
                 type="number"
                 min="0"
                 step="0.01"
+                class="w-full"
               />
             </UFormField>
-            <UFormField label="Validade opcional">
-              <AppDatePicker v-model="batchForm.expiresOn" />
-            </UFormField>
-          </div>
-          <template #footer>
             <UButton
               block
+              class="min-h-11"
               :loading="saving"
-              :disabled="!batchForm.productId || batchForm.quantity <= 0"
-              label="Registrar entrada"
-              icon="i-lucide-package-plus"
-              @click="addBatch"
+              :disabled="!productForm.name.trim()"
+              label="Cadastrar produto"
+              icon="i-lucide-plus"
+              @click="createProduct"
             />
-          </template>
-        </UCard>
-      </div>
+          </div>
+        </template>
+      </UModal>
     </section>
 
     <section
@@ -685,81 +603,6 @@ onUnmounted(() => {
               />
             </div>
           </div>
-          <div
-            v-if="editingProductId === product.id"
-            class="mt-4 space-y-3 border-t border-default pt-4"
-          >
-            <UFormField label="Nome">
-              <UInput
-                v-model="editForm.name"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField label="Descrição">
-              <UTextarea
-                v-model="editForm.description"
-                :rows="2"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField label="Preço de venda">
-              <UInput
-                v-model.number="editForm.salePrice"
-                type="number"
-                min="0"
-                step="0.01"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField
-              label="Trocar foto"
-              hint="JPG, PNG ou WebP de até 5 MB"
-            >
-              <StorePhotoPicker
-                :input-key="editPhotoInputKey"
-                @file="selectEditPhoto"
-              />
-            </UFormField>
-            <img
-              v-if="editPhotoPreview"
-              :src="editPhotoPreview"
-              alt="Prévia da nova foto"
-              class="size-20 rounded-xl object-cover"
-            >
-            <UButton
-              v-if="product.image_path && !removeExistingPhoto && !editPhoto"
-              size="sm"
-              color="neutral"
-              variant="ghost"
-              icon="i-lucide-image-off"
-              label="Remover foto atual"
-              @click="removeExistingPhoto = true"
-            />
-            <p
-              v-if="removeExistingPhoto"
-              class="text-sm text-muted"
-            >
-              A foto atual será removida ao salvar.
-            </p>
-            <div class="flex flex-wrap gap-2">
-              <UButton
-                size="sm"
-                icon="i-lucide-save"
-                label="Salvar alterações"
-                :loading="saving"
-                :disabled="!canSaveEdit"
-                @click="saveProduct(product)"
-              />
-              <UButton
-                size="sm"
-                color="neutral"
-                variant="ghost"
-                label="Cancelar"
-                :disabled="saving"
-                @click="cancelEdit"
-              />
-            </div>
-          </div>
         </UCard>
         <UCard
           v-if="!activeProducts.length"
@@ -779,6 +622,138 @@ onUnmounted(() => {
           </div>
         </UCard>
       </div>
+      <UModal
+        v-if="editingProduct"
+        :open="true"
+        :title="`Editar ${editingProduct.name}`"
+        description="Atualize o produto ou registre uma entrada de estoque."
+        :dismissible="!saving"
+        :close="!saving"
+        :ui="{ content: 'left-0 top-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 rounded-none', header: 'pr-14 pt-[max(1rem,env(safe-area-inset-top))]', close: 'top-[max(1rem,env(safe-area-inset-top))]', body: 'overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))]' }"
+        @update:open="!$event && cancelEdit()"
+      >
+        <template #body>
+          <div class="mx-auto max-w-3xl space-y-6">
+            <UAlert
+              v-if="feedback"
+              color="neutral"
+              variant="subtle"
+              :description="feedback"
+            />
+            <div class="space-y-4">
+              <UFormField label="Nome">
+                <UInput
+                  v-model="editForm.name"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Descrição">
+                <UTextarea
+                  v-model="editForm.description"
+                  :rows="2"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Preço de venda">
+                <UInput
+                  v-model.number="editForm.salePrice"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField
+                label="Trocar foto"
+                hint="JPG, PNG ou WebP de até 5 MB"
+              >
+                <StorePhotoPicker
+                  :input-key="editPhotoInputKey"
+                  @file="selectEditPhoto"
+                />
+              </UFormField>
+              <img
+                v-if="editPhotoPreview"
+                :src="editPhotoPreview"
+                alt="Prévia da nova foto"
+                class="size-20 rounded-xl object-cover"
+              >
+              <UButton
+                v-if="editingProduct.image_path && !removeExistingPhoto && !editPhoto"
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-image-off"
+                label="Remover foto atual"
+                @click="removeExistingPhoto = true"
+              />
+              <p
+                v-if="removeExistingPhoto"
+                class="text-sm text-muted"
+              >
+                A foto atual será removida ao salvar.
+              </p>
+              <div class="flex flex-wrap gap-2">
+                <UButton
+                  size="sm"
+                  icon="i-lucide-save"
+                  label="Salvar alterações"
+                  :loading="saving"
+                  :disabled="!canSaveEdit"
+                  @click="saveProduct(editingProduct)"
+                />
+                <UButton
+                  size="sm"
+                  color="neutral"
+                  variant="ghost"
+                  label="Cancelar"
+                  :disabled="saving"
+                  @click="cancelEdit"
+                />
+              </div>
+            </div>
+            <section class="space-y-4 border-t border-default pt-5">
+              <div>
+                <h3 class="text-lg font-semibold">
+                  Entrada de estoque
+                </h3>
+                <p class="text-sm text-muted">
+                  Registre um lote para atualizar o saldo.
+                </p>
+              </div>
+              <UFormField
+                label="Quantidade"
+                hint="Aceita unidades fracionadas"
+              >
+                <UInput
+                  v-model.number="batchForm.quantity"
+                  type="number"
+                  min="0.001"
+                  step="0.001"
+                />
+              </UFormField>
+              <UFormField label="Custo unitário opcional">
+                <UInput
+                  v-model.number="batchForm.unitCost"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                />
+              </UFormField>
+              <UFormField label="Validade opcional">
+                <AppDatePicker v-model="batchForm.expiresOn" />
+              </UFormField>
+              <UButton
+                :loading="saving"
+                :disabled="!Number.isFinite(batchForm.quantity) || batchForm.quantity <= 0"
+                label="Registrar entrada"
+                icon="i-lucide-package-plus"
+                @click="addBatch"
+              />
+            </section>
+          </div>
+        </template>
+      </UModal>
       <p
         v-if="activeProducts.length && !visibleProducts.length"
         class="mt-4 text-sm text-muted"
