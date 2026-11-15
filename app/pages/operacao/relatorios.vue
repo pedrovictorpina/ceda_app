@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
+import { displayOrderNumber } from '~/utils/storeOrderNumber'
 
 definePageMeta({ middleware: ['auth', 'operations'] })
 useSeoMeta({ title: 'Relatórios da Loja' })
@@ -17,6 +18,8 @@ interface OrderItem {
 interface StoreOrder {
   id: string
   order_number: number
+  daily_order_number: number | null
+  daily_order_date: string | null
   status: OrderStatus
   total_amount: number
   created_at: string
@@ -235,8 +238,8 @@ async function loadReport() {
   } else cashDay.value = null
   const endTimestamp = `${end}T23:59:59.999`
   const ordersQuery = cashFlowAvailable.value
-    ? $supabase.from('store_orders').select('id, order_number, status, total_amount, created_at, payment_method, store_order_items(product_id, quantity, unit_price, product:store_products(name))')
-    : $supabase.from('store_orders').select('id, order_number, status, total_amount, created_at, store_order_items(product_id, quantity, unit_price, product:store_products(name))')
+    ? $supabase.from('store_orders').select('id, order_number, daily_order_number, daily_order_date, status, total_amount, created_at, payment_method, store_order_items(product_id, quantity, unit_price, product:store_products(name))')
+    : $supabase.from('store_orders').select('id, order_number, daily_order_number, daily_order_date, status, total_amount, created_at, store_order_items(product_id, quantity, unit_price, product:store_products(name))')
   const filteredOrdersQuery = cashDay.value
     ? ordersQuery.eq('cash_day_id', cashDay.value.id)
     : ordersQuery.gte('created_at', `${start}T00:00:00`).lte('created_at', endTimestamp)
@@ -281,7 +284,7 @@ function downloadFile(content: BlobPart, fileName: string, type: string) {
 function exportCsv() {
   const header = ['Pedido', 'Data', 'Status', 'Pagamento', 'Produtos', 'Quantidade', 'Total']
   const rows = orders.value.map(order => [
-    order.order_number,
+    displayOrderNumber(order),
     formatDateTime(order.created_at),
     statusLabels[order.status],
     order.payment_method ? paymentLabels[order.payment_method] : '',
@@ -499,6 +502,13 @@ watch(selectedCashDayId, () => {
       :description="feedback"
     />
 
+    <StoreFinanceLedger
+      v-if="!loading && (cashDay || (effectiveDates.start && effectiveDates.end))"
+      :start="cashDay?.business_date || effectiveDates.start"
+      :end="cashDay?.business_date || effectiveDates.end"
+      :cash-day-id="cashDay?.id"
+    />
+
     <section
       ref="reportPanel"
       class="mt-6"
@@ -547,8 +557,11 @@ watch(selectedCashDayId, () => {
         />
       </div>
       <template v-else>
-        <div class="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <UCard class="overflow-hidden">
+        <div class="mt-5 grid grid-cols-2 gap-2 xl:grid-cols-4">
+          <UCard
+            class="overflow-hidden"
+            :ui="{ body: 'p-3 sm:p-4' }"
+          >
             <div class="flex items-start justify-between gap-3">
               <p class="text-sm text-muted">
                 Faturamento confirmado
@@ -558,13 +571,16 @@ watch(selectedCashDayId, () => {
                   class="size-4"
                 />
               </div>
-            </div><p class="mt-3 text-3xl font-bold text-primary">
+            </div><p class="mt-2 text-xl font-bold text-primary sm:text-2xl">
               {{ formatMoney(revenue) }}
             </p><p class="mt-2 text-xs text-muted">
               Pagos no caixa ou entregues
             </p>
           </UCard>
-          <UCard class="overflow-hidden">
+          <UCard
+            class="overflow-hidden"
+            :ui="{ body: 'p-3 sm:p-4' }"
+          >
             <div class="flex items-start justify-between gap-3">
               <p class="text-sm text-muted">
                 Pedidos no período
@@ -574,13 +590,16 @@ watch(selectedCashDayId, () => {
                   class="size-4"
                 />
               </div>
-            </div><p class="mt-3 text-3xl font-bold">
+            </div><p class="mt-2 text-xl font-bold sm:text-2xl">
               {{ orders.length }}
             </p><p class="mt-2 text-xs text-muted">
               Inclui cancelados
             </p>
           </UCard>
-          <UCard class="overflow-hidden">
+          <UCard
+            class="overflow-hidden"
+            :ui="{ body: 'p-3 sm:p-4' }"
+          >
             <div class="flex items-start justify-between gap-3">
               <p class="text-sm text-muted">
                 Ticket médio
@@ -590,13 +609,16 @@ watch(selectedCashDayId, () => {
                   class="size-4"
                 />
               </div>
-            </div><p class="mt-3 text-3xl font-bold">
+            </div><p class="mt-2 text-xl font-bold sm:text-2xl">
               {{ formatMoney(averageTicket) }}
             </p><p class="mt-2 text-xs text-muted">
               Sobre pedidos confirmados
             </p>
           </UCard>
-          <UCard class="overflow-hidden">
+          <UCard
+            class="overflow-hidden"
+            :ui="{ body: 'p-3 sm:p-4' }"
+          >
             <div class="flex items-start justify-between gap-3">
               <p class="text-sm text-muted">
                 Itens entregues
@@ -606,7 +628,7 @@ watch(selectedCashDayId, () => {
                   class="size-4"
                 />
               </div>
-            </div><p class="mt-3 text-3xl font-bold">
+            </div><p class="mt-2 text-xl font-bold sm:text-2xl">
               {{ formatQuantity(deliveredItems) }}
             </p><p class="mt-2 text-xs text-muted">
               {{ formatQuantity(pendingItems) }} pendentes · {{ formatQuantity(cancelledItems) }} cancelados
@@ -801,8 +823,37 @@ watch(selectedCashDayId, () => {
               </p>
             </div>
           </template>
+          <div
+            v-if="orders.length"
+            class="space-y-3 md:hidden"
+          >
+            <article
+              v-for="order in orders"
+              :key="order.id"
+              class="rounded-xl border border-default p-3"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <strong>Pedido {{ displayOrderNumber(order) }}</strong>
+                <UBadge
+                  :color="statusColors[order.status]"
+                  variant="subtle"
+                  :label="statusLabels[order.status]"
+                />
+              </div>
+              <p class="mt-1 text-sm text-muted">
+                {{ formatDateTime(order.created_at) }}
+              </p>
+              <p class="mt-2 text-sm">
+                {{ order.store_order_items.map(item => `${relationName(item.product) || 'Produto'} × ${formatQuantity(item.quantity)}`).join(', ') }}
+              </p>
+              <p class="mt-2 font-semibold">
+                {{ formatMoney(order.total_amount) }}
+              </p>
+            </article>
+          </div>
           <UTable
             v-if="orders.length"
+            class="hidden md:block"
             :data="orders"
             :columns="orderColumns"
             :get-row-id="order => order.id"
@@ -810,7 +861,7 @@ watch(selectedCashDayId, () => {
             :ui="{ base: 'min-w-[48rem]', caption: 'sr-only', th: 'px-2 py-3 text-xs uppercase tracking-wide', td: 'px-2 py-3' }"
           >
             <template #order_number-cell="{ row }">
-              <span class="font-semibold">#{{ row.original.order_number }}</span>
+              <span class="font-semibold">{{ displayOrderNumber(row.original) }}</span>
             </template>
             <template #created_at-cell="{ row }">
               {{ formatDateTime(row.original.created_at) }}

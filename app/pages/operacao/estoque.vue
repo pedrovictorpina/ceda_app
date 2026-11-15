@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { canOperateStore } from '~/utils/authorization'
+import { randomId } from '~/utils/randomId'
 
 definePageMeta({ middleware: ['auth', 'operations', 'inventory'] })
 useSeoMeta({ title: 'Controle de estoque' })
@@ -43,11 +44,16 @@ const editPhotoPreview = ref('')
 const editPhotoInputKey = ref(0)
 const removeExistingPhoto = ref(false)
 const showExcludedProducts = ref(false)
-const cameraCapture = ref<string | undefined>()
+const productSearch = ref('')
+const productModalOpen = ref(false)
 
 const canManageInventory = computed(() => canOperateStore(auth.profile))
 const productItems = computed(() => products.value.filter(product => product.active).map(product => ({ label: `${product.name} (${product.stock_available})`, value: product.id })))
 const activeProducts = computed(() => products.value.filter(product => product.active))
+const visibleProducts = computed(() => {
+  const term = productSearch.value.trim().toLocaleLowerCase('pt-BR')
+  return activeProducts.value.filter(product => product.name.toLocaleLowerCase('pt-BR').includes(term))
+})
 const excludedProducts = computed(() => products.value.filter(product => !product.active))
 const lowStockProducts = computed(() => activeProducts.value.filter(product => product.stock_available <= 5))
 const availableUnits = computed(() => activeProducts.value.reduce((total, product) => total + Number(product.stock_available), 0))
@@ -77,8 +83,7 @@ function clearProductPhoto() {
   productPhotoInputKey.value++
 }
 
-function selectProductPhoto(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0]
+function selectProductPhoto(file: File) {
   clearProductPhoto()
   if (!file) return
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
@@ -97,8 +102,7 @@ function clearEditPhoto() {
   editPhotoInputKey.value++
 }
 
-function selectEditPhoto(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0]
+function selectEditPhoto(file: File) {
   clearEditPhoto()
   if (!file) return
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
@@ -157,7 +161,7 @@ async function saveProduct(product: Product) {
       saving.value = false
       return
     }
-    newImagePath = `${product.id}/photo-${crypto.randomUUID()}.${extension}`
+    newImagePath = `${product.id}/photo-${randomId()}.${extension}`
     const { error } = await $supabase.storage.from('store-product-images').upload(newImagePath, editPhoto.value, {
       contentType: editPhoto.value.type,
       cacheControl: '3600',
@@ -209,7 +213,7 @@ async function createProduct() {
   const { $supabase } = useNuxtApp()
   if (!$supabase || !auth.profile || !canManageInventory.value || !productForm.name.trim() || productForm.salePrice < 0) return
   saving.value = true
-  const productId = crypto.randomUUID()
+  const productId = randomId()
   let imagePath: string | null = null
   if (productPhoto.value) {
     const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[productPhoto.value.type]
@@ -244,6 +248,8 @@ async function createProduct() {
     productForm.description = ''
     productForm.salePrice = 0
     clearProductPhoto()
+    productModalOpen.value = false
+    batchForm.productId = productId
     feedback.value = 'Produto cadastrado. Agora adicione uma entrada de estoque.'
     await loadInventory()
   }
@@ -270,7 +276,6 @@ async function addBatch() {
 }
 
 onMounted(() => {
-  if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) cameraCapture.value = 'environment'
   if (!canManageInventory.value) {
     void navigateTo('/operacao')
     return
@@ -296,17 +301,31 @@ onUnmounted(() => {
     />
     <div class="mt-5 flex flex-wrap gap-2">
       <UButton
-        to="/operacao"
-        label="Voltar ao caixa"
-        icon="i-lucide-arrow-left"
-        color="neutral"
-        variant="outline"
+        to="#saldo-estoque"
+        label="Consultar"
+        icon="i-lucide-search"
+        class="min-h-11"
       />
       <UButton
-        label="Atualizar estoque"
+        label="Novo produto"
+        color="neutral"
+        variant="outline"
+        class="min-h-11"
+        @click="productModalOpen = true"
+      />
+      <UButton
+        to="#entrada-estoque"
+        label="Entrada de estoque"
+        color="neutral"
+        variant="outline"
+        class="min-h-11"
+      />
+      <UButton
         icon="i-lucide-refresh-cw"
         color="neutral"
         variant="outline"
+        class="min-h-11 min-w-11 justify-center"
+        aria-label="Atualizar estoque"
         :loading="loading"
         @click="loadInventory"
       />
@@ -325,26 +344,26 @@ onUnmounted(() => {
     />
     <div
       v-if="canManageInventory"
-      class="mt-6 grid gap-3 sm:grid-cols-3"
+      class="mt-5 grid grid-cols-3 gap-2"
     >
-      <UCard>
-        <p class="text-sm text-muted">
+      <UCard :ui="{ body: 'p-3 sm:p-4' }">
+        <p class="text-xs text-muted">
           Produtos ativos
-        </p><p class="mt-1 text-2xl font-bold">
+        </p><p class="mt-1 text-xl font-bold">
           {{ activeProducts.length }}
         </p>
       </UCard>
-      <UCard>
-        <p class="text-sm text-muted">
+      <UCard :ui="{ body: 'p-3 sm:p-4' }">
+        <p class="text-xs text-muted">
           Unidades disponíveis
-        </p><p class="mt-1 text-2xl font-bold">
+        </p><p class="mt-1 text-xl font-bold">
           {{ availableUnits }}
         </p>
       </UCard>
-      <UCard>
-        <p class="text-sm text-muted">
+      <UCard :ui="{ body: 'p-3 sm:p-4' }">
+        <p class="text-xs text-muted">
           Precisam de reposição
-        </p><p class="mt-1 text-2xl font-bold text-warning">
+        </p><p class="mt-1 text-xl font-bold text-warning">
           {{ lowStockProducts.length }}
         </p>
       </UCard>
@@ -365,96 +384,88 @@ onUnmounted(() => {
           Cadastre o produto uma vez e registre cada recebimento como um lote para manter o saldo confiável.
         </p>
       </div>
-      <div class="grid gap-6 xl:grid-cols-2">
-        <UCard class="overflow-hidden">
-          <template #header>
-            <div class="flex items-start gap-3">
-              <div class="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary">
-                <UIcon
-                  name="i-lucide-package-plus"
-                  class="size-5"
-                />
-              </div><div>
-                <h3 class="font-semibold">
-                  Novo produto
-                </h3><p class="mt-0.5 text-sm text-muted">
-                  Disponível após a primeira entrada.
-                </p>
-              </div>
-            </div>
-          </template>
-          <div class="space-y-4">
-            <UFormField
-              label="Nome"
-              hint="Como aparecerá para o membro"
-            >
-              <UInput
-                v-model="productForm.name"
-                placeholder="Ex.: Café coado"
-                icon="i-lucide-tag"
-              />
-            </UFormField>
-            <UFormField label="Descrição">
-              <UTextarea
-                v-model="productForm.description"
-                :rows="2"
-                placeholder="Ex.: Preparado na hora"
-              />
-            </UFormField>
-            <UFormField
-              label="Foto do produto (opcional)"
-              hint="JPG, PNG ou WebP de até 5 MB"
-            >
-              <UInput
-                :key="productPhotoInputKey"
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                :capture="cameraCapture"
-                class="w-full"
-                @change="selectProductPhoto"
-              />
-            </UFormField>
-            <div
-              v-if="productPhotoPreview"
-              class="flex items-center gap-3"
-            >
-              <img
-                :src="productPhotoPreview"
-                alt="Prévia da foto do produto"
-                class="size-20 rounded-xl object-cover"
+      <div>
+        <UModal
+          v-model:open="productModalOpen"
+          title="Cadastrar produto"
+          description="Depois, registre a entrada no estoque."
+          :ui="{ content: 'left-0 top-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 rounded-none sm:left-1/2 sm:top-1/2 sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-2rem)] sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg', header: 'pr-14 pt-[max(1rem,env(safe-area-inset-top))]', close: 'top-[max(1rem,env(safe-area-inset-top))]', body: 'overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))]' }"
+        >
+          <template #body>
+            <div class="space-y-4">
+              <UFormField
+                label="Nome"
+                hint="Como aparecerá para o membro"
               >
+                <UInput
+                  v-model="productForm.name"
+                  placeholder="Ex.: Café coado"
+                  icon="i-lucide-tag"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Descrição">
+                <UTextarea
+                  v-model="productForm.description"
+                  :rows="2"
+                  placeholder="Ex.: Preparado na hora"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField
+                label="Foto do produto (opcional)"
+                hint="JPG, PNG ou WebP de até 5 MB"
+              >
+                <StorePhotoPicker
+                  :input-key="productPhotoInputKey"
+                  @file="selectProductPhoto"
+                />
+              </UFormField>
+              <div
+                v-if="productPhotoPreview"
+                class="flex items-center gap-3"
+              >
+                <img
+                  :src="productPhotoPreview"
+                  alt="Prévia da foto do produto"
+                  class="size-20 rounded-xl object-cover"
+                >
+                <UButton
+                  label="Remover foto"
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-x"
+                  @click="clearProductPhoto"
+                />
+              </div>
+              <UFormField
+                label="Preço de venda"
+                hint="Valor cobrado ao membro"
+              >
+                <UInput
+                  v-model.number="productForm.salePrice"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="w-full"
+                />
+              </UFormField>
               <UButton
-                label="Remover foto"
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-x"
-                @click="clearProductPhoto"
+                block
+                class="min-h-11"
+                :loading="saving"
+                :disabled="!productForm.name.trim()"
+                label="Cadastrar produto"
+                icon="i-lucide-plus"
+                @click="createProduct"
               />
             </div>
-            <UFormField
-              label="Preço de venda"
-              hint="Valor cobrado ao membro"
-            >
-              <UInput
-                v-model.number="productForm.salePrice"
-                type="number"
-                min="0"
-                step="0.01"
-              />
-            </UFormField>
-          </div>
-          <template #footer>
-            <UButton
-              block
-              :loading="saving"
-              :disabled="!productForm.name.trim()"
-              label="Cadastrar produto"
-              icon="i-lucide-plus"
-              @click="createProduct"
-            />
           </template>
-        </UCard>
-        <UCard class="overflow-hidden">
+        </UModal>
+        <UCard
+          id="entrada-estoque"
+          class="scroll-mt-4 overflow-hidden"
+        >
           <template #header>
             <div class="flex items-start gap-3">
               <div class="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary">
@@ -521,9 +532,10 @@ onUnmounted(() => {
 
     <section
       v-if="canManageInventory"
-      class="mt-8"
+      id="saldo-estoque"
+      class="mt-8 scroll-mt-4"
     >
-      <div class="flex items-end justify-between gap-3">
+      <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p class="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
             Saldo atual
@@ -561,6 +573,17 @@ onUnmounted(() => {
           />
         </div>
       </div>
+      <UFormField
+        label="Buscar no estoque"
+        class="mt-4"
+      >
+        <UInput
+          v-model="productSearch"
+          icon="i-lucide-search"
+          placeholder="Nome do produto"
+          class="w-full sm:max-w-sm"
+        />
+      </UFormField>
       <div
         v-if="loading"
         class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
@@ -576,7 +599,7 @@ onUnmounted(() => {
         class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
       >
         <UCard
-          v-for="product in activeProducts"
+          v-for="product in visibleProducts"
           :key="product.id"
           class="overflow-hidden"
         >
@@ -692,13 +715,9 @@ onUnmounted(() => {
               label="Trocar foto"
               hint="JPG, PNG ou WebP de até 5 MB"
             >
-              <UInput
-                :key="editPhotoInputKey"
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                :capture="cameraCapture"
-                class="w-full"
-                @change="selectEditPhoto"
+              <StorePhotoPicker
+                :input-key="editPhotoInputKey"
+                @file="selectEditPhoto"
               />
             </UFormField>
             <img
@@ -760,6 +779,12 @@ onUnmounted(() => {
           </div>
         </UCard>
       </div>
+      <p
+        v-if="activeProducts.length && !visibleProducts.length"
+        class="mt-4 text-sm text-muted"
+      >
+        Nenhum produto encontrado para esta busca.
+      </p>
       <UAlert
         v-if="!loading && lowStockProducts.length"
         class="mt-4"

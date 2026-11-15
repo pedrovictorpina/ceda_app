@@ -1,8 +1,8 @@
 <script setup lang="ts">
-const props = defineProps<{ quantity: number, max: number, name: string, size?: 'sm' | 'md' }>()
+defineProps<{ quantity: number, max: number, name: string, size?: 'sm' | 'md' }>()
 const emit = defineEmits<{ change: [quantity: number] }>()
 
-const buttonSize = computed(() => props.size === 'sm' ? 'size-10' : 'size-11')
+const buttonSize = 'size-11'
 </script>
 
 <template>

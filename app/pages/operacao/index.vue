@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { canOperateStore } from '~/utils/authorization'
+import type { StoreProduct } from '~/utils/storeCart'
+import { displayOrderNumber } from '~/utils/storeOrderNumber'
 
 definePageMeta({ middleware: ['auth', 'operations'] })
 useSeoMeta({ title: 'Caixa e balcão' })
 
-interface Product {
+interface Product extends StoreProduct {
   id: string
   name: string
   stock_available: number
@@ -14,11 +16,14 @@ interface Product {
 interface StoreOrder {
   id: string
   order_number: number
+  daily_order_number: number | null
+  daily_order_date: string | null
   status: 'awaiting_payment' | 'ready_for_pickup'
   total_amount: number
   created_at: string
   note: string | null
   buyer_name: string | null
+  order_source?: 'member' | 'counter'
   store_order_items: Array<{ quantity: number, product: { name: string } | { name: string }[] | null }>
 }
 
@@ -46,11 +51,14 @@ const paymentMethods = reactive<Record<string, string>>({})
 const loading = ref(true)
 const saving = ref(false)
 const feedback = ref('')
+const creatingOrder = ref(false)
+const counterOrderBusy = ref(false)
 
 const canManageInventory = computed(() => canOperateStore(auth.profile))
 const canConfirmOrders = canManageInventory
 const canFulfillOrders = canManageInventory
 const activeProducts = computed(() => products.value.filter(product => product.active))
+const counterProducts = computed(() => activeProducts.value.filter(product => cashDayProductIds.value.includes(product.id) && product.stock_available >= 1))
 const awaitingPaymentCount = computed(() => orders.value.filter(order => order.status === 'awaiting_payment').length)
 const readyForPickupCount = computed(() => orders.value.filter(order => order.status === 'ready_for_pickup').length)
 const actionableOrders = computed(() => orders.value.filter(order =>
@@ -96,8 +104,8 @@ async function loadOperation(silent = false) {
     cashFlowAvailable.value = !error
   } else if (cashFlowAvailable.value) await $supabase.rpc('sync_store_cash_day')
   const ordersQuery = cashFlowAvailable.value
-    ? $supabase.from('store_orders').select('id, order_number, status, total_amount, created_at, note, buyer_name, store_order_items(quantity, product:store_products(name))')
-    : $supabase.from('store_orders').select('id, order_number, status, total_amount, created_at, note, store_order_items(quantity, product:store_products(name))')
+    ? $supabase.from('store_orders').select('id, order_number, daily_order_number, daily_order_date, status, total_amount, created_at, note, buyer_name, order_source, store_order_items(quantity, product:store_products(name))')
+    : $supabase.from('store_orders').select('id, order_number, daily_order_number, daily_order_date, status, total_amount, created_at, note, store_order_items(quantity, product:store_products(name))')
   const [productsResult, ordersResult, cashDayResult] = await Promise.all([
     $supabase.from('store_products').select('*').order('name'),
     ordersQuery.in('status', ['awaiting_payment', 'ready_for_pickup']).order('created_at'),
@@ -173,13 +181,18 @@ async function changeOrderStatus(order: StoreOrder, status: 'ready_for_pickup' |
   feedback.value = error || !data
     ? 'O pedido não foi atualizado. Ele pode ter sido atendido por outra pessoa; atualize a lista antes de tentar novamente.'
     : status === 'ready_for_pickup'
-      ? `Pedido #${order.order_number} confirmado para retirada.`
+      ? `Pedido ${displayOrderNumber(order)} confirmado para retirada.`
       : status === 'fulfilled'
-        ? `Pedido #${order.order_number} entregue e baixado do estoque.`
-        : `Pedido #${order.order_number} cancelado e estoque liberado.`
+        ? `Pedido ${displayOrderNumber(order)} entregue e baixado do estoque.`
+        : `Pedido ${displayOrderNumber(order)} cancelado e estoque liberado.`
   cancellingOrderId.value = null
   fulfillingOrderId.value = null
   if (!error && data) await loadOperation()
+}
+
+function counterOrderCreated() {
+  feedback.value = 'Pedido de balcão criado e incluído na fila de atendimento.'
+  void loadOperation(true)
 }
 
 onMounted(() => {
@@ -194,7 +207,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div>
+  <div class="pb-16">
     <BrandLoadingStatus
       v-if="saving"
       label="Atualizando operação…"
@@ -222,20 +235,45 @@ onUnmounted(() => {
       class="mt-5 flex flex-wrap gap-2"
     >
       <UButton
-        to="/operacao/estoque"
-        label="Controle de estoque"
-        icon="i-lucide-boxes"
+        to="#fila-atendimento"
+        label="Pagamentos e entregas"
+        icon="i-lucide-list-checks"
         color="neutral"
         variant="outline"
-      />
-      <UButton
-        to="/operacao/relatorios"
-        label="Relatórios"
-        icon="i-lucide-chart-no-axes-combined"
-        color="neutral"
-        variant="outline"
+        class="min-h-11"
       />
     </div>
+
+    <UButton
+      v-if="canManageInventory && !creatingOrder"
+      icon="i-lucide-plus"
+      aria-label="Novo pedido avulso"
+      title="Novo pedido avulso"
+      class="hide-while-typing fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-30 grid size-14 place-items-center rounded-full shadow-xl md:bottom-6 md:right-8"
+      @click="creatingOrder = true"
+    />
+
+    <UModal
+      v-model:open="creatingOrder"
+      title="Novo pedido de balcão"
+      description="Selecione os produtos do caixa aberto."
+      :dismissible="!counterOrderBusy"
+      :close="!counterOrderBusy"
+      :ui="{ content: 'left-0 top-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 rounded-none sm:left-1/2 sm:top-1/2 sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-2rem)] sm:max-w-4xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg', header: 'pr-14 pt-[max(1rem,env(safe-area-inset-top))]', close: 'top-[max(1rem,env(safe-area-inset-top))]', body: 'overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))]' }"
+    >
+      <template #body>
+        <StoreCounterOrderForm
+          v-if="creatingOrder && auth.profile"
+          :products="counterProducts"
+          :open="cashDay?.status === 'open' && (!cashDay.auto_close_at || new Date(cashDay.auto_close_at).getTime() > Date.now())"
+          :operator-id="auth.profile.id"
+          @created="counterOrderCreated"
+          @refresh="loadOperation(true)"
+          @busy="counterOrderBusy = $event"
+          @close="creatingOrder = false"
+        />
+      </template>
+    </UModal>
 
     <section
       v-if="canManageInventory && cashFlowAvailable"
@@ -284,15 +322,16 @@ onUnmounted(() => {
             color="neutral"
             variant="ghost"
             type="button"
-            class="focus-ring flex items-center justify-between gap-3 rounded-xl border border-default p-3 text-left hover:bg-elevated"
+            class="focus-ring min-h-12 flex items-center justify-between gap-3 rounded-xl border p-3 text-left"
+            :class="cashDayProductIds.includes(product.id) ? 'border-emerald-500 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'border-orange-500 bg-orange-500/15 text-orange-700 dark:text-orange-300'"
             :disabled="saving || product.stock_available <= 0"
             :aria-pressed="cashDayProductIds.includes(product.id)"
             @click="toggleCashDayProduct(product.id)"
           >
-            <span class="min-w-0"><strong class="block truncate">{{ product.name }}</strong><small class="text-muted">{{ product.stock_available }} disponíveis</small></span>
+            <span class="min-w-0"><strong class="block truncate">{{ product.name }}</strong><small class="block">{{ cashDayProductIds.includes(product.id) ? 'Adicionado' : 'Não adicionado' }} · {{ product.stock_available }} disponíveis</small></span>
             <UIcon
               :name="cashDayProductIds.includes(product.id) ? 'i-lucide-circle-check' : 'i-lucide-circle-plus'"
-              class="size-5 shrink-0 text-primary"
+              class="size-5 shrink-0"
             />
           </UButton>
         </div>
@@ -317,6 +356,7 @@ onUnmounted(() => {
           <UButton
             label="Iniciar vendas"
             icon="i-lucide-play"
+            class="min-h-11 sm:ml-auto"
             :loading="saving"
             :disabled="!canStartCashDay"
             @click="startCashDay"
@@ -382,7 +422,10 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <section class="mt-8">
+    <section
+      id="fila-atendimento"
+      class="mt-8 scroll-mt-4"
+    >
       <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p class="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
@@ -433,7 +476,12 @@ onUnmounted(() => {
                   />
                 </div><div>
                   <p class="font-semibold">
-                    Pedido #{{ order.order_number }}
+                    Pedido {{ displayOrderNumber(order) }}
+                  </p><p
+                    v-if="order.order_source === 'counter'"
+                    class="text-xs text-muted"
+                  >
+                    Balcão{{ order.buyer_name ? '' : ' · Cliente não informado' }}
                   </p><p
                     v-if="order.buyer_name"
                     class="truncate text-sm text-muted"
@@ -503,7 +551,7 @@ onUnmounted(() => {
               class="mt-2 rounded-lg border border-error/40 p-3"
             >
               <p class="mb-2 text-sm">
-                Cancelar o pedido #{{ order.order_number }} e liberar o estoque?
+                Cancelar o pedido {{ displayOrderNumber(order) }} e liberar o estoque?
               </p>
               <div class="flex gap-2">
                 <UButton
@@ -533,14 +581,14 @@ onUnmounted(() => {
               class="rounded-xl border border-primary/30 bg-primary/5 p-3"
             >
               <p class="font-semibold">
-                Confirmar entrega #{{ order.order_number }}?
+                Confirmar entrega {{ displayOrderNumber(order) }}?
               </p>
               <p class="mt-1 text-sm text-muted">
                 Confira os itens acima{{ order.buyer_name ? ` e o nome: ${order.buyer_name}` : '' }}. Confirme depois de entregar; isso conclui o pedido e dá baixa no estoque.
               </p>
               <div class="mt-3 flex flex-wrap gap-2">
                 <UButton
-                  :label="`Confirmar entrega #${order.order_number}`"
+                  :label="`Confirmar entrega ${displayOrderNumber(order)}`"
                   :loading="saving"
                   icon="i-lucide-check"
                   @click="changeOrderStatus(order, 'fulfilled')"
