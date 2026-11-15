@@ -71,7 +71,7 @@ const stockLabel = computed(() => props.product.stock_available === 1
         />
         <UButton
           v-else
-          class="rounded-full"
+          class="min-h-11 rounded-full"
           icon="i-lucide-plus"
           label="Adicionar"
           :aria-label="`Adicionar ${product.name} ao pedido`"

@@ -1,0 +1,11 @@
+# Proposta de numeração de pedidos por caixa
+
+A migração `supabase/migrations/20261115165030_daily_order_display_numbers.sql` acrescenta aos pedidos um número de exibição e a data do caixa. O identificador UUID e o número global existente são preservados; pedidos antigos mantêm seus números e são indicados como anteriores. A nova interface consulta os campos acrescentados, portanto não deve ser publicada antes da migração.
+
+O número é único por dia de caixa, independentemente de o pedido ser de membro ou de balcão. O primeiro caixa sem pedidos anteriores começa em 1. Se a migração for aplicada durante um caixa que já tenha pedidos, os próximos números começam acima do maior número já exibido nesse caixa, evitando colisões. Pedidos antigos não são renumerados. A data exibida é a data do caixa, inclusive quando ele permanece aberto após a meia-noite. Alterações posteriores no número, na data ou no caixa do pedido são bloqueadas.
+
+Um contador em esquema privado usa uma operação atômica por caixa e um índice único protege a sequência em caso de concorrência. O contador e o pedido são gravados na mesma transação. Falhas e cancelamentos preservam o comportamento transacional existente; cancelamentos de pedidos já criados não reutilizam números.
+
+O arquivo local revisado tem SHA-256 `B02D4E7F97982109C7235D06450E30DB9D9DFE30BF6760DDDB6E4EFAB196E9A`; conferir o hash antes de aplicar. A migração adiciona colunas, índice, tabela privada e gatilhos ao banco compartilhado de produção. Confirmar previamente a recuperação/backup disponível e coordenar a aplicação com a operação da loja. Não remover os campos ou o contador como reversão depois que pedidos receberem números diários: preservar o histórico e revisar uma migração corretiva.
+
+Em PostgreSQL 18 isolado com estrutura sintética, foram verificados pedido antigo preservado, continuação em caixa existente, reinício em outro caixa, proteção contra dados informados pelo cliente, imutabilidade e 20 inserções simultâneas sem duplicação. Os testes de formatação passaram na suíte JavaScript. Esses testes não substituem a execução da suíte pgTAP em Supabase nem a validação autenticada de membro, caixa e balcão. Após uma aplicação autorizada, verificar o histórico remoto, índice, gatilhos, advisor e fluxos reais antes de publicar a interface.

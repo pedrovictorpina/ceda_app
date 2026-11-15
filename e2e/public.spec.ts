@@ -8,7 +8,7 @@ test('public routes render their primary content', async ({ page }) => {
     ['/sobre', 'Sobre Nós'],
     ['/contato', 'Fale Conosco'],
     ['/horarios-de-culto', 'Horários de Culto'],
-    ['/privacidade', 'Política de Privacidade']
+    ['/privacidade', 'Privacidade e seus dados']
   ] as const
 
   for (const [path, heading] of routes) {
@@ -26,13 +26,14 @@ test('protected routes redirect signed-out visitors to login', async ({ page }) 
 
   for (const path of protectedRoutes) {
     await page.goto(path)
-    await expect(page).toHaveURL(/\/entrar$/)
+    await expect(page).toHaveURL(/\/entrar(?:\?|$)/)
   }
 })
 
 test('theme and public navigation are keyboard-accessible', async ({ page }) => {
   await page.goto('/')
-  const themeButton = page.getByRole('button', { name: /dark mode/i })
+  await page.waitForLoadState('networkidle')
+  const themeButton = page.getByRole('button', { name: /modo escuro/i })
   await themeButton.focus()
   await page.keyboard.press('Enter')
   await expect(page.locator('html')).toHaveClass(/dark/)

@@ -1,0 +1,31 @@
+# Preparação do novo Supabase do CEDA
+
+Destino indicado: projeto `qnhcgynkxkjympxvshch`, separado do banco anterior. Na inspeção inicial de 15/11/2026 ele estava ativo, sem tabelas públicas, usuários, buckets ou migrações. Posteriormente, a pedido do usuário, foram criadas no Auth apenas as contas `dev@dev.com` e `caixa@caixa.com`; seus papéis no CEDA e o acesso pelo aplicativo ainda não foram verificados. A troca do endereço do site para esse projeto não transporta as demais contas, senhas, permissões, arquivos, conteúdo, produtos, pedidos ou histórico do banco antigo.
+
+## Esquema
+
+O repositório contém 22 migrações em `supabase/migrations`, a aplicar na ordem dos nomes, respeitando suas dependências e o histórico de migração do Supabase. Elas incluem a fundação de pessoas e conteúdo, células, auditoria, família, estoque e pedidos, sessões de caixa, imagens, professores e turmas, diretório de células, permissões unificadas de operação, pedidos de balcão, lançamentos financeiros e numeração diária. O histórico precisa manter a correspondência correta com os arquivos locais; não marcar versões como aplicadas sem sua execução efetiva.
+
+A fundação cria os buckets privados `avatars`, `message-media`, `feed-media` e `child-private` e suas políticas. A migração de imagens de estoque cria o bucket público `store-product-images` com limites e tipos de arquivo. É preciso conferir os grants e as políticas após a instalação; a existência dos buckets não copia seus arquivos antigos.
+
+A migração financeira foi rejeitada anteriormente pela revisão automática ao ser proposta para o banco de produção anterior. A decisão não deve ser contornada aplicando a mesma alteração em outro projeto ou por outro mecanismo. Seu tratamento no novo projeto depende de um caminho oficial de revisão e autorização que aceite expressamente esse novo destino. Até que isso seja esclarecido, não aplicar a migração financeira nem publicar a interface que depende dela.
+
+Em 15/11/2026, a aplicação oficial da primeira migração, `20260914230908_initial_church_foundation.sql`, foi rejeitada pela revisão automática. O SHA-256 do arquivo revisado é `640661758D465FA3240463934748A08D4C2E308BADBE52F719C1A894591787D1`. O motivo informado foi o impacto persistente amplo em esquema, RLS e Storage em banco remoto e a impossibilidade de verificar diretamente a autorização encaminhada. A consulta posterior confirmou que o projeto continua sem migrações, tabelas públicas, usuários e buckets. As migrações seguintes dependem dessa fundação; não executar a mesma alteração por SQL manual, outra ferramenta ou divisão do arquivo para contornar a rejeição. A autorização precisa ser apresentada diretamente no chat da tarefa ou na interface oficial que a plataforma disponibilizar, e continua sujeita à revisão automática.
+
+## Contas e acesso
+
+O pedido mais recente do usuário foi criar somente duas contas, dev e caixa, sem migrar os demais usuários e dados. A inicialização precisa preservar suas senhas fora de scripts, logs e do repositório. Autorização privilegiada depende de `app_metadata.roles`; os registros correspondentes em `user_system_roles` precisam estar sincronizados. A operação caixa/balcão usa `cashier` com compatibilidade para `counter`, ambos acompanhados de `member`. É necessária uma primeira conta administrativa para iniciar a gestão dos demais papéis.
+
+Uma solicitação anterior mencionava outras contas, mas não foram criadas. Para eventual responsável, `guardian_access` aprovado e os vínculos `child_guardians` são separados do papel de membro. A liderança depende de vínculo de liderança numa célula, não de papel global genérico. Novos vínculos e contas devem respeitar o escopo solicitado pelo usuário.
+
+Os endereços de teste fornecidos devem ser conferidos quanto ao recebimento de mensagens antes de depender de convite por e-mail ou recuperação de senha. A chave publicável do projeto é acessível pelo conector. A gestão de papéis pela API precisa de uma credencial administrativa **do novo projeto**, mantida exclusivamente no servidor, em `SUPABASE_SERVICE_ROLE_KEY` ou em outro mecanismo compatível já suportado pelo aplicativo. Uma credencial administrativa do projeto anterior não funciona no novo e nunca deve ir para `NUXT_PUBLIC_*`.
+
+## Implantação
+
+Antes da mudança de produção, verificar as URLs autorizadas e o site de redirecionamento no Auth, política de confirmação de e-mail, configuração de SMTP, Data API, RLS e permissões de Storage. Preparar `NUXT_PUBLIC_SUPABASE_URL` e `NUXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` para o projeto novo e a credencial administrativa exclusiva do servidor, sem expor valores. Atualizar os três apenas em uma implantação coordenada com os esquemas e contas já prontos. A consulta de metadados das variáveis Vercel retornou 403; o fallback CLI informou que a sessão havia expirado. É preciso recuperar acesso apropriado antes de configurar a implantação.
+
+Para reautenticar o CLI da Vercel no computador, executar `npx --yes vercel login`, abrir no navegador o endereço e confirmar o código apresentados pelo próprio CLI, sem enviar código, token ou senha para o chat. Depois, conferir o escopo e as permissões do projeto `ceda-app` na equipe `team_xlgZsZ1I0U97g5TZeb5LVy3r`. A reautenticação não garante que a conta escolhida possua permissão para ler ou alterar as variáveis do projeto; um administrador da equipe pode precisar concedê-la. Isso é separado da revisão automática das migrações do Supabase.
+
+Após a reautenticação de 15/11/2026, o CLI confirmou a sessão e conseguiu listar os nomes das três variáveis no projeto e equipe corretos. A listagem não confirma permissão para alterá-las nem compatibilidade dos valores atuais com o novo projeto. Não se deve modificá-las antes de a fundação, as contas e as verificações do banco novo estarem prontas.
+
+Validar login e recuperação, papéis efetivos, criação e processamento de pedido, reserva e baixa de estoque, relatórios financeiros e permissões negativas, uploads, recuperação de arquivos e navegação no celular. Verificar também o app Capacitor e quaisquer clientes que usem o mesmo domínio. A autorização, conteúdo e dados do projeto anterior permanecem separados; não removê-los. Fazer a troca final apenas depois das verificações e coordenar como voltar ao ambiente anterior se necessário, sem apagar dados novos.

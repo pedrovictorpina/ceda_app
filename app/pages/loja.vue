@@ -2,6 +2,7 @@
 import { Haptics, ImpactStyle } from '@capacitor/haptics'
 import { cartCount as countCart, cartQuantityOf, cartTotal as sumCart, formatBRL, reconcileCart, setCartQuantity, type CartItem, type StoreProduct } from '~/utils/storeCart'
 import { readStoreCartDraft, restoreStoreCartDraft, saveStoreCartDraft, type CartDraft } from '~/utils/storeCartDraft'
+import { displayOrderNumber } from '~/utils/storeOrderNumber'
 
 definePageMeta({ middleware: 'auth' })
 useSeoMeta({ title: 'Loja' })
@@ -9,6 +10,8 @@ useSeoMeta({ title: 'Loja' })
 interface Order {
   id: string
   order_number: number
+  daily_order_number: number | null
+  daily_order_date: string | null
   status: 'awaiting_payment' | 'ready_for_pickup' | 'fulfilled' | 'cancelled'
   total_amount: number
   created_at: string
@@ -68,7 +71,7 @@ async function loadStore(silent = false) {
   } else if (cashFlowAvailable.value) await $supabase.rpc('sync_store_cash_day')
   const [productsResult, ordersResult, cashDayResult] = await Promise.all([
     $supabase.from('store_products').select('*').eq('active', true).gt('stock_available', 0).order('name'),
-    $supabase.from('store_orders').select('id, order_number, status, total_amount, created_at').eq('buyer_id', ownerId).order('created_at', { ascending: false }).limit(20),
+    $supabase.from('store_orders').select('id, order_number, daily_order_number, daily_order_date, status, total_amount, created_at').eq('buyer_id', ownerId).order('created_at', { ascending: false }).limit(20),
     cashFlowAvailable.value
       ? $supabase.from('store_cash_days').select('id').eq('status', 'open').limit(1).maybeSingle()
       : Promise.resolve({ data: null, error: null })
@@ -159,7 +162,7 @@ async function placeOrder() {
   const { data: order, error: createError } = await $supabase
     .from('store_orders')
     .insert({ buyer_id: ownerId, note: note.value.trim() || null })
-    .select('id, order_number')
+    .select('id, order_number, daily_order_number, daily_order_date')
     .single()
   if (auth.profile?.id !== ownerId) {
     placingOrder.value = false
@@ -209,7 +212,7 @@ async function placeOrder() {
   note.value = ''
   cartOpen.value = false
   placingOrder.value = false
-  toast.add({ title: `Pedido #${order.order_number} enviado`, description: 'Informe esse número no caixa para pagar e retirar.', color: 'success', icon: 'i-lucide-circle-check', duration: 8000 })
+  toast.add({ title: `Pedido ${displayOrderNumber(order)} enviado`, description: 'Informe esse número no caixa para pagar e retirar.', color: 'success', icon: 'i-lucide-circle-check', duration: 8000 })
   await loadStore()
 }
 
@@ -300,7 +303,7 @@ onUnmounted(() => {
         </div>
         <div class="min-w-0 flex-1">
           <p class="font-semibold text-highlighted">
-            Pedido #{{ order.order_number }}
+            Pedido {{ displayOrderNumber(order) }}
           </p>
           <p class="text-sm text-muted">
             {{ order.status === 'ready_for_pickup' ? 'Pronto. Retire no caixa.' : 'Pague no caixa informando o número.' }}
@@ -448,7 +451,7 @@ onUnmounted(() => {
             >
               <div class="min-w-0">
                 <p class="font-medium text-highlighted">
-                  Pedido #{{ order.order_number }}
+                  Pedido {{ displayOrderNumber(order) }}
                 </p>
                 <p class="text-sm text-muted">
                   {{ new Date(order.created_at).toLocaleDateString('pt-BR') }}, {{ formatBRL(order.total_amount) }}
