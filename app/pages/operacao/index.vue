@@ -49,6 +49,7 @@ const selectionAvailable = ref(false)
 const closingMode = ref<'manual' | 'automatic'>('manual')
 const autoCloseTime = ref('22:00')
 const confirmingClose = ref(false)
+const closeError = ref('')
 const cancellingOrderId = ref<string | null>(null)
 const fulfillingOrderId = ref<string | null>(null)
 const paymentMethods = reactive<Record<string, string>>({})
@@ -218,8 +219,10 @@ async function closeCashDay() {
   saving.value = true
   const { error } = await $supabase.rpc('close_store_cash_day', { p_day_id: cashDay.value.id })
   saving.value = false
-  if (error) feedback.value = error.message
-  else await navigateTo(`/operacao/relatorios?dia=${cashDay.value.id}`)
+  if (error) {
+    console.error('Erro ao encerrar o caixa:', error)
+    closeError.value = 'Não foi possível encerrar o caixa. Confira os pedidos pendentes e tente novamente.'
+  } else await navigateTo(`/operacao/relatorios?dia=${cashDay.value.id}`)
 }
 
 async function changeOrderStatus(order: StoreOrder, status: 'ready_for_pickup' | 'fulfilled' | 'cancelled') {
@@ -387,14 +390,14 @@ onUnmounted(() => {
             @click="toggleAllCashDayProducts"
           />
         </div>
-        <div class="grid max-h-96 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
+        <div class="grid max-h-96 grid-cols-2 gap-2 overflow-y-auto lg:grid-cols-3">
           <UButton
             v-for="product in activeProducts"
             :key="product.id"
             color="neutral"
             variant="ghost"
             type="button"
-            class="focus-ring min-h-12 flex items-center justify-between gap-3 rounded-xl border p-3 text-left"
+            class="focus-ring flex min-h-12 min-w-0 items-center justify-between gap-2 rounded-xl border p-2 text-left sm:gap-3 sm:p-3"
             :class="cashDayProductIds.includes(product.id) ? 'border-primary bg-primary/10 text-primary' : 'border-default'"
             :disabled="saving || !selectionAvailable || (product.stock_available <= 0 && !cashDayProductIds.includes(product.id))"
             :aria-pressed="cashDayProductIds.includes(product.id)"
@@ -448,33 +451,40 @@ onUnmounted(() => {
           icon="i-lucide-square"
           color="neutral"
           variant="outline"
-          @click="confirmingClose = true"
+          @click="closeError = ''; confirmingClose = true"
         />
       </div>
-      <div
-        v-if="confirmingClose && cashDay?.status === 'open'"
-        class="mt-4 rounded-xl border border-warning/40 bg-warning/10 p-4"
+      <UModal
+        v-if="cashDay?.status === 'open'"
+        v-model:open="confirmingClose"
+        title="Encerrar o caixa agora?"
+        description="Novos pedidos serão bloqueados. Resolva os pedidos aguardando pagamento antes de confirmar."
+        :dismissible="!saving"
+        :close="!saving"
       >
-        <p class="font-semibold">
-          Encerrar o caixa agora?
-        </p>
-        <p class="mt-1 text-sm text-muted">
-          Novos pedidos serão bloqueados. Resolva os pedidos aguardando pagamento antes de confirmar.
-        </p>
-        <div class="mt-3 flex gap-2">
-          <UButton
-            label="Confirmar encerramento"
-            :loading="saving"
-            @click="closeCashDay"
+        <template #body>
+          <UAlert
+            v-if="closeError"
+            color="error"
+            variant="subtle"
+            :description="closeError"
           />
-          <UButton
-            label="Voltar"
-            color="neutral"
-            variant="ghost"
-            @click="confirmingClose = false"
-          />
-        </div>
-      </div>
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              label="Confirmar encerramento"
+              :loading="saving"
+              @click="closeCashDay"
+            />
+            <UButton
+              label="Voltar"
+              color="neutral"
+              variant="ghost"
+              :disabled="saving"
+              @click="confirmingClose = false"
+            />
+          </div>
+        </template>
+      </UModal>
       <div
         v-if="cashDay?.status === 'closed' && isTodayCashDay"
         class="mt-5 space-y-3"
