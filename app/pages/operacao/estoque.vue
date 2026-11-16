@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { canOperateStore } from '~/utils/authorization'
 import { randomId } from '~/utils/randomId'
+import { formatPriceInput, parsePriceInput } from '~/utils/moneyInput'
 
 definePageMeta({ middleware: ['auth', 'operations', 'inventory'] })
 useSeoMeta({ title: 'Controle de estoque' })
@@ -46,6 +47,14 @@ const removeExistingPhoto = ref(false)
 const showExcludedProducts = ref(false)
 const productSearch = ref('')
 const productModalOpen = ref(false)
+const productPriceInput = computed({
+  get: () => formatPriceInput(productForm.salePrice),
+  set: (value: string) => { productForm.salePrice = parsePriceInput(value) }
+})
+const editPriceInput = computed({
+  get: () => formatPriceInput(editForm.salePrice),
+  set: (value: string) => { editForm.salePrice = parsePriceInput(value) }
+})
 
 const canManageInventory = computed(() => canOperateStore(auth.profile))
 const productItems = computed(() => products.value.filter(product => product.active).map(product => ({ label: `${product.name} (${product.stock_available})`, value: product.id })))
@@ -443,10 +452,9 @@ onUnmounted(() => {
                 hint="Valor cobrado ao membro"
               >
                 <UInput
-                  v-model.number="productForm.salePrice"
-                  type="number"
-                  min="0"
-                  step="0.01"
+                  v-model="productPriceInput"
+                  type="text"
+                  inputmode="numeric"
                   class="w-full"
                 />
               </UFormField>
@@ -704,10 +712,9 @@ onUnmounted(() => {
             </UFormField>
             <UFormField label="Preço de venda">
               <UInput
-                v-model.number="editForm.salePrice"
-                type="number"
-                min="0"
-                step="0.01"
+                v-model="editPriceInput"
+                type="text"
+                inputmode="numeric"
                 class="w-full"
               />
             </UFormField>
