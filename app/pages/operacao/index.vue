@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { canOperateStore } from '~/utils/authorization'
+import { cashSelectionChanges } from '~/utils/storeCashSelection'
 import type { StoreProduct } from '~/utils/storeCart'
 import { displayOrderNumber } from '~/utils/storeOrderNumber'
 
@@ -24,7 +25,9 @@ interface StoreOrder {
   note: string | null
   buyer_name: string | null
   order_source?: 'member' | 'counter'
-  store_order_items: Array<{ quantity: number, product: { name: string } | { name: string }[] | null }>
+  cash_day_id: string | null
+  updated_at: string
+  store_order_items: Array<{ product_id: string, quantity: number, unit_price: number, product: { name: string } | { name: string }[] | null }>
 }
 
 interface CashDay {
@@ -42,9 +45,13 @@ const orders = ref<StoreOrder[]>([])
 const cashDay = ref<CashDay | null>(null)
 const cashFlowAvailable = ref<boolean | null>(null)
 const cashDayProductIds = ref<string[]>([])
+const savedCashDayProductIds = ref<string[]>([])
+const syncingProducts = ref(false)
+const selectionAvailable = ref(false)
 const closingMode = ref<'manual' | 'automatic'>('manual')
 const autoCloseTime = ref('22:00')
 const confirmingClose = ref(false)
+const closeError = ref('')
 const cancellingOrderId = ref<string | null>(null)
 const fulfillingOrderId = ref<string | null>(null)
 const paymentMethods = reactive<Record<string, string>>({})
@@ -53,11 +60,15 @@ const saving = ref(false)
 const feedback = ref('')
 const creatingOrder = ref(false)
 const counterOrderBusy = ref(false)
+const editingOrder = ref<StoreOrder | null>(null)
+const editingOrderBusy = ref(false)
 
 const canManageInventory = computed(() => canOperateStore(auth.profile))
 const canConfirmOrders = canManageInventory
 const canFulfillOrders = canManageInventory
 const activeProducts = computed(() => products.value.filter(product => product.active))
+const availableProducts = computed(() => activeProducts.value.filter(product => product.stock_available > 0))
+const allProductsSelected = computed(() => availableProducts.value.length > 0 && availableProducts.value.every(product => cashDayProductIds.value.includes(product.id)))
 const counterProducts = computed(() => activeProducts.value.filter(product => cashDayProductIds.value.includes(product.id) && product.stock_available >= 1))
 const awaitingPaymentCount = computed(() => orders.value.filter(order => order.status === 'awaiting_payment').length)
 const readyForPickupCount = computed(() => orders.value.filter(order => order.status === 'ready_for_pickup').length)
@@ -77,7 +88,7 @@ const paymentOptions = [
   { label: 'Cartão de débito', value: 'debit_card' },
   { label: 'Cartão de crédito', value: 'credit_card' }
 ]
-const canStartCashDay = computed(() => cashDayProductIds.value.length > 0
+const canStartCashDay = computed(() => selectionAvailable.value && !syncingProducts.value && availableProducts.value.some(product => cashDayProductIds.value.includes(product.id))
   && (closingMode.value === 'manual' || /^([01]\d|2[0-3]):[0-5]\d$/.test(autoCloseTime.value)))
 const todayParts = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
@@ -86,6 +97,7 @@ const todayPart = (type: string) => todayParts.find(part => part.type === type)?
 const todayInSaoPaulo = `${todayPart('year')}-${todayPart('month')}-${todayPart('day')}`
 const isTodayCashDay = computed(() => cashDay.value?.business_date === todayInSaoPaulo)
 let refreshTimer: ReturnType<typeof setInterval> | undefined
+let selectionVersion = 0
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
@@ -98,19 +110,20 @@ function relationName(value: { name: string } | { name: string }[] | null) {
 async function loadOperation(silent = false) {
   const { $supabase } = useNuxtApp()
   if (!$supabase) return
+  const version = selectionVersion
   if (!silent) loading.value = true
   if (cashFlowAvailable.value === null) {
     const { error } = await $supabase.rpc('sync_store_cash_day')
     cashFlowAvailable.value = !error
   } else if (cashFlowAvailable.value) await $supabase.rpc('sync_store_cash_day')
   const ordersQuery = cashFlowAvailable.value
-    ? $supabase.from('store_orders').select('id, order_number, daily_order_number, daily_order_date, status, total_amount, created_at, note, buyer_name, order_source, store_order_items(quantity, product:store_products(name))')
-    : $supabase.from('store_orders').select('id, order_number, daily_order_number, daily_order_date, status, total_amount, created_at, note, store_order_items(quantity, product:store_products(name))')
+    ? $supabase.from('store_orders').select('id, order_number, daily_order_number, daily_order_date, status, total_amount, created_at, updated_at, cash_day_id, note, buyer_name, order_source, store_order_items(product_id, quantity, unit_price, product:store_products(name))')
+    : $supabase.from('store_orders').select('id, order_number, daily_order_number, daily_order_date, status, total_amount, created_at, updated_at, cash_day_id, note, store_order_items(product_id, quantity, unit_price, product:store_products(name))')
   const [productsResult, ordersResult, cashDayResult] = await Promise.all([
     $supabase.from('store_products').select('*').order('name'),
     ordersQuery.in('status', ['awaiting_payment', 'ready_for_pickup']).order('created_at'),
     cashFlowAvailable.value
-      ? $supabase.from('store_cash_days').select('id, business_date, status, started_at, auto_close_at, closed_at').order('business_date', { ascending: false }).limit(1).maybeSingle()
+      ? $supabase.from('store_cash_days').select('id, business_date, status, started_at, auto_close_at, closed_at').order('created_at', { ascending: false }).limit(1).maybeSingle()
       : Promise.resolve({ data: null, error: null })
   ])
   products.value = (productsResult.data || []) as Product[]
@@ -118,9 +131,20 @@ async function loadOperation(silent = false) {
   cashDay.value = cashDayResult.data as CashDay | null
   if (cashDay.value) {
     const selectionResult = await $supabase.from('store_cash_day_products').select('product_id').eq('cash_day_id', cashDay.value.id)
-    cashDayProductIds.value = (selectionResult.data || []).map(row => row.product_id)
-    if (selectionResult.error) feedback.value = 'Não foi possível carregar os produtos do dia.'
-  } else cashDayProductIds.value = []
+    if (!selectionResult.error && version === selectionVersion && !syncingProducts.value) {
+      cashDayProductIds.value = (selectionResult.data || []).map(row => row.product_id)
+      savedCashDayProductIds.value = [...cashDayProductIds.value]
+      selectionAvailable.value = true
+    }
+    if (selectionResult.error) {
+      selectionAvailable.value = false
+      feedback.value = 'Não foi possível carregar os produtos do dia.'
+    }
+  } else if (version === selectionVersion && !syncingProducts.value) {
+    cashDayProductIds.value = []
+    savedCashDayProductIds.value = []
+    selectionAvailable.value = false
+  }
   if (productsResult.error || ordersResult.error || cashDayResult.error) feedback.value = 'Não foi possível carregar a operação do dia.'
   loading.value = false
 }
@@ -135,26 +159,66 @@ async function prepareCashDay() {
   if (!error) await loadOperation()
 }
 
-async function toggleCashDayProduct(productId: string) {
+async function syncCashDayProducts() {
   const { $supabase } = useNuxtApp()
-  if (!$supabase || !cashDay.value || !['preparing', 'open'].includes(cashDay.value.status)) return
-  saving.value = true
-  const selected = cashDayProductIds.value.includes(productId)
-  if (selected && cashDay.value.status === 'open') {
-    saving.value = false
-    return
+  if (!$supabase || !cashDay.value || cashDay.value.status !== 'preparing' || syncingProducts.value) return
+  const dayId = cashDay.value.id
+  syncingProducts.value = true
+  try {
+    while (true) {
+      const { add, remove } = cashSelectionChanges(cashDayProductIds.value, savedCashDayProductIds.value)
+      if (!add.length && !remove.length) break
+      if (add.length) {
+        const { data, error } = await $supabase.from('store_cash_day_products').insert(add.map(productId => ({ cash_day_id: dayId, product_id: productId }))).select('product_id')
+        if (error || data.length !== add.length) throw error || new Error('Seleção incompleta')
+        savedCashDayProductIds.value = [...savedCashDayProductIds.value, ...add]
+      }
+      if (remove.length) {
+        const { data, error } = await $supabase.from('store_cash_day_products').delete().eq('cash_day_id', dayId).in('product_id', remove).select('product_id')
+        if (error || data.length !== remove.length) throw error || new Error('Seleção incompleta')
+        savedCashDayProductIds.value = savedCashDayProductIds.value.filter(id => !remove.includes(id))
+      }
+    }
+  } catch (error) {
+    console.error('Erro ao atualizar produtos do caixa:', error)
+    cashDayProductIds.value = [...savedCashDayProductIds.value]
+    selectionAvailable.value = false
+    feedback.value = 'Não foi possível atualizar os produtos. Atualize a página e confira a seleção.'
+  } finally {
+    syncingProducts.value = false
   }
-  const { error } = selected
-    ? await $supabase.from('store_cash_day_products').delete().eq('cash_day_id', cashDay.value.id).eq('product_id', productId)
-    : await $supabase.from('store_cash_day_products').insert({ cash_day_id: cashDay.value.id, product_id: productId })
-  saving.value = false
-  if (error) feedback.value = 'Não foi possível atualizar os produtos do dia.'
+}
+
+function selectCashDayProducts(ids: string[]) {
+  if (!cashDay.value || cashDay.value.status !== 'preparing' || !selectionAvailable.value) return
+  selectionVersion++
+  cashDayProductIds.value = ids
+  void syncCashDayProducts()
+}
+
+function toggleCashDayProduct(productId: string) {
+  selectCashDayProducts(cashDayProductIds.value.includes(productId)
+    ? cashDayProductIds.value.filter(id => id !== productId)
+    : [...cashDayProductIds.value, productId])
+}
+
+function toggleAllCashDayProducts() {
+  selectCashDayProducts(allProductsSelected.value ? [] : [...new Set([...cashDayProductIds.value, ...availableProducts.value.map(product => product.id)])])
+}
+
+async function addOpenCashDayProduct(productId: string) {
+  const { $supabase } = useNuxtApp()
+  if (!$supabase || !cashDay.value || cashDay.value.status !== 'open' || saving.value) return
+  saving.value = true
+  const { error } = await $supabase.from('store_cash_day_products').insert({ cash_day_id: cashDay.value.id, product_id: productId })
+  if (error) feedback.value = 'Não foi possível adicionar o produto ao caixa.'
   else await loadOperation(true)
+  saving.value = false
 }
 
 async function startCashDay() {
   const { $supabase } = useNuxtApp()
-  if (!$supabase || !cashDay.value) return
+  if (!$supabase || !cashDay.value || !canStartCashDay.value) return
   const autoCloseTimeValue = closingMode.value === 'automatic' ? autoCloseTime.value : null
   saving.value = true
   const { error } = await $supabase.rpc('start_store_cash_day', { p_day_id: cashDay.value.id, p_auto_close_time: autoCloseTimeValue })
@@ -169,8 +233,10 @@ async function closeCashDay() {
   saving.value = true
   const { error } = await $supabase.rpc('close_store_cash_day', { p_day_id: cashDay.value.id })
   saving.value = false
-  if (error) feedback.value = error.message
-  else await navigateTo(`/operacao/relatorios?dia=${cashDay.value.id}`)
+  if (error) {
+    console.error('Erro ao encerrar o caixa:', error)
+    closeError.value = 'Não foi possível encerrar o caixa. Confira os pedidos pendentes e tente novamente.'
+  } else await navigateTo(`/operacao/relatorios?dia=${cashDay.value.id}`)
 }
 
 async function changeOrderStatus(order: StoreOrder, status: 'ready_for_pickup' | 'fulfilled' | 'cancelled') {
@@ -264,6 +330,31 @@ onUnmounted(() => {
       </template>
     </UModal>
 
+    <UModal
+      v-if="editingOrder?.cash_day_id"
+      :open="true"
+      :title="`Editar pedido ${displayOrderNumber(editingOrder)}`"
+      description="Altere os produtos e quantidades do pedido."
+      :dismissible="!editingOrderBusy"
+      :close="!editingOrderBusy"
+      :ui="{ content: 'left-0 top-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 rounded-none sm:left-1/2 sm:top-1/2 sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-2rem)] sm:max-w-4xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg', header: 'pr-14 pt-[max(1rem,env(safe-area-inset-top))]', close: 'top-[max(1rem,env(safe-area-inset-top))]', body: 'overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))]' }"
+      @update:open="!$event && (editingOrder = null)"
+    >
+      <template #body>
+        <StoreOrderEditForm
+          :order-id="editingOrder.id"
+          :cash-day-id="editingOrder.cash_day_id"
+          :updated-at="editingOrder.updated_at"
+          :items="editingOrder.store_order_items"
+          :products="products"
+          :paid="editingOrder.status === 'ready_for_pickup'"
+          @saved="feedback = 'Pedido atualizado.'; loadOperation(true)"
+          @busy="editingOrderBusy = $event"
+          @close="editingOrder = null"
+        />
+      </template>
+    </UModal>
+
     <section
       v-if="canManageInventory && cashFlowAvailable"
       class="mt-6 rounded-2xl border border-default bg-elevated/30 p-5"
@@ -301,23 +392,42 @@ onUnmounted(() => {
         v-else-if="cashDay.status === 'preparing'"
         class="mt-5 space-y-5"
       >
-        <p class="text-sm text-muted">
-          Produtos disponíveis para venda hoje: {{ cashDayProductIds.length }} selecionado(s).
-        </p>
-        <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="font-semibold">
+              Produtos para venda
+            </p>
+            <p
+              class="text-sm text-muted"
+              aria-live="polite"
+            >
+              {{ cashDayProductIds.length }} selecionado(s){{ syncingProducts ? ' · Salvando seleção…' : '' }}
+            </p>
+          </div>
+          <UButton
+            :label="allProductsSelected ? 'Desmarcar todos' : 'Selecionar todos'"
+            :icon="allProductsSelected ? 'i-lucide-square' : 'i-lucide-square-check'"
+            color="neutral"
+            variant="outline"
+            class="min-h-11"
+            :disabled="saving || !selectionAvailable || !availableProducts.length"
+            @click="toggleAllCashDayProducts"
+          />
+        </div>
+        <div class="grid max-h-96 grid-cols-2 gap-2 overflow-y-auto lg:grid-cols-3">
           <UButton
             v-for="product in activeProducts"
             :key="product.id"
             color="neutral"
             variant="ghost"
             type="button"
-            class="focus-ring min-h-12 flex items-center justify-between gap-3 rounded-xl border p-3 text-left"
-            :class="cashDayProductIds.includes(product.id) ? 'border-emerald-500 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'border-orange-500 bg-orange-500/15 text-orange-700 dark:text-orange-300'"
-            :disabled="saving || product.stock_available <= 0"
+            class="focus-ring flex min-h-12 min-w-0 items-center justify-between gap-2 rounded-xl border p-2 text-left sm:gap-3 sm:p-3"
+            :class="cashDayProductIds.includes(product.id) ? 'border-primary bg-primary/10 text-primary' : 'border-default'"
+            :disabled="saving || !selectionAvailable || (product.stock_available <= 0 && !cashDayProductIds.includes(product.id))"
             :aria-pressed="cashDayProductIds.includes(product.id)"
             @click="toggleCashDayProduct(product.id)"
           >
-            <span class="min-w-0"><strong class="block truncate">{{ product.name }}</strong><small class="block">{{ cashDayProductIds.includes(product.id) ? 'Adicionado' : 'Não adicionado' }} · {{ product.stock_available }} disponíveis</small></span>
+            <span class="min-w-0"><strong class="block break-words">{{ product.name }}</strong><small class="block">{{ product.stock_available > 0 ? `${product.stock_available} disponíveis` : 'Sem estoque' }}</small></span>
             <UIcon
               :name="cashDayProductIds.includes(product.id) ? 'i-lucide-circle-check' : 'i-lucide-circle-plus'"
               class="size-5 shrink-0"
@@ -365,7 +475,7 @@ onUnmounted(() => {
           icon="i-lucide-square"
           color="neutral"
           variant="outline"
-          @click="confirmingClose = true"
+          @click="closeError = ''; confirmingClose = true"
         />
       </div>
       <div
@@ -387,7 +497,7 @@ onUnmounted(() => {
             icon="i-lucide-circle-plus"
             class="min-h-12 justify-start"
             :disabled="saving || product.stock_available <= 0"
-            @click="toggleCashDayProduct(product.id)"
+            @click="addOpenCashDayProduct(product.id)"
           >
             <span class="min-w-0 text-left"><strong class="block truncate">{{ product.name }}</strong><small class="block">{{ product.stock_available }} disponíveis</small></span>
           </UButton>
@@ -399,30 +509,37 @@ onUnmounted(() => {
           Todos os produtos ativos já foram adicionados.
         </p>
       </div>
-      <div
-        v-if="confirmingClose && cashDay?.status === 'open'"
-        class="mt-4 rounded-xl border border-warning/40 bg-warning/10 p-4"
+      <UModal
+        v-if="cashDay?.status === 'open'"
+        v-model:open="confirmingClose"
+        title="Encerrar o caixa agora?"
+        description="Novos pedidos serão bloqueados. Resolva os pedidos aguardando pagamento antes de confirmar."
+        :dismissible="!saving"
+        :close="!saving"
       >
-        <p class="font-semibold">
-          Encerrar o caixa agora?
-        </p>
-        <p class="mt-1 text-sm text-muted">
-          Novos pedidos serão bloqueados. Resolva os pedidos aguardando pagamento antes de confirmar.
-        </p>
-        <div class="mt-3 flex gap-2">
-          <UButton
-            label="Confirmar encerramento"
-            :loading="saving"
-            @click="closeCashDay"
+        <template #body>
+          <UAlert
+            v-if="closeError"
+            color="error"
+            variant="subtle"
+            :description="closeError"
           />
-          <UButton
-            label="Voltar"
-            color="neutral"
-            variant="ghost"
-            @click="confirmingClose = false"
-          />
-        </div>
-      </div>
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              label="Confirmar encerramento"
+              :loading="saving"
+              @click="closeCashDay"
+            />
+            <UButton
+              label="Voltar"
+              color="neutral"
+              variant="ghost"
+              :disabled="saving"
+              @click="confirmingClose = false"
+            />
+          </div>
+        </template>
+      </UModal>
       <div
         v-if="cashDay?.status === 'closed' && isTodayCashDay"
         class="mt-5 space-y-3"
@@ -438,6 +555,12 @@ onUnmounted(() => {
           :to="`/operacao/relatorios?dia=${cashDay.id}`"
           label="Ver relatório do dia"
           icon="i-lucide-chart-no-axes-combined"
+        />
+        <UButton
+          label="Preparar nova operação"
+          icon="i-lucide-calendar-plus"
+          :loading="saving"
+          @click="prepareCashDay"
         />
       </div>
     </section>
@@ -541,6 +664,17 @@ onUnmounted(() => {
             </p>
           </div>
           <template #footer>
+            <UButton
+              v-if="canManageInventory && order.cash_day_id"
+              block
+              class="mb-3"
+              color="neutral"
+              variant="outline"
+              label="Editar pedido"
+              icon="i-lucide-pencil"
+              :disabled="saving"
+              @click="editingOrder = order"
+            />
             <USelect
               v-if="cashFlowAvailable && order.status === 'awaiting_payment' && canConfirmOrders"
               v-model="paymentMethods[order.id]"
