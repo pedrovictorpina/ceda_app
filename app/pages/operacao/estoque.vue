@@ -30,6 +30,15 @@ interface InventoryBatch {
 const auth = useAuthStore()
 const products = ref<Product[]>([])
 const batches = ref<InventoryBatch[]>([])
+const historyOpen = ref(false)
+const historyBatches = ref<InventoryBatch[]>([])
+const historyPage = ref(1)
+const historyRequestedPage = ref(1)
+const historyHasNext = ref(false)
+const historyLoading = ref(false)
+const historyError = ref('')
+const historyPageSize = 20
+let historyLoadVersion = 0
 const loading = ref(true)
 const saving = ref(false)
 const feedback = ref('')
@@ -88,10 +97,6 @@ function formatMoney(value: number) {
 function productImageUrl(path: string | null) {
   const { $supabase } = useNuxtApp()
   return path && $supabase ? $supabase.storage.from('store-product-images').getPublicUrl(path).data.publicUrl : ''
-}
-
-function relationName(value: { name: string } | { name: string }[] | null) {
-  return Array.isArray(value) ? value[0]?.name : value?.name
 }
 
 function clearProductPhoto() {
@@ -176,12 +181,41 @@ async function loadInventory() {
   loading.value = true
   const [productsResult, batchesResult] = await Promise.all([
     $supabase.from('store_products').select('id, name, description, image_path, sale_price, stock_available, active').order('name'),
-    $supabase.from('inventory_batches').select('id, product_id, quantity_received, quantity_on_hand, expires_on, created_at, product:store_products(name)').order('created_at', { ascending: false }).limit(20)
+    $supabase.from('inventory_batches').select('id, product_id, quantity_received, quantity_on_hand, expires_on, created_at, product:store_products(name)').order('created_at', { ascending: false }).order('id', { ascending: false }).limit(6)
   ])
   products.value = (productsResult.data || []) as Product[]
   batches.value = (batchesResult.data || []) as unknown as InventoryBatch[]
   if (productsResult.error || batchesResult.error) feedback.value = 'Não foi possível carregar o estoque.'
   loading.value = false
+}
+
+async function loadHistory(page = 1) {
+  const { $supabase } = useNuxtApp()
+  if (!$supabase || !canManageInventory.value) return
+  const version = ++historyLoadVersion
+  historyRequestedPage.value = page
+  historyLoading.value = true
+  historyError.value = ''
+  const offset = (page - 1) * historyPageSize
+  const { data, error } = await $supabase.from('inventory_batches')
+    .select('id, product_id, quantity_received, quantity_on_hand, expires_on, created_at, product:store_products(name)')
+    .order('created_at', { ascending: false }).order('id', { ascending: false }).range(offset, offset + historyPageSize)
+  if (version !== historyLoadVersion) return
+  historyLoading.value = false
+  if (error) {
+    historyError.value = 'Não foi possível carregar as entradas. Tente novamente.'
+    return
+  }
+  historyBatches.value = (data || []).slice(0, historyPageSize) as unknown as InventoryBatch[]
+  historyHasNext.value = (data || []).length > historyPageSize
+  historyPage.value = page
+}
+
+function openHistory() {
+  historyOpen.value = true
+  historyBatches.value = []
+  historyPage.value = 1
+  void loadHistory()
 }
 
 async function saveProduct(product: Product) {
@@ -1048,28 +1082,10 @@ onUnmounted(() => {
         Entradas recentes
       </h2>
       <p class="mt-1 text-sm text-muted">
-        Últimos lotes registrados e saldo restante em cada lote.
+        Os cinco lotes mais recentes e o saldo de cada um.
       </p>
       <div class="mt-4 space-y-2">
-        <div
-          v-for="batch in batches"
-          :key="batch.id"
-          class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-default p-3"
-        >
-          <div>
-            <p class="font-semibold">
-              {{ relationName(batch.product) || 'Produto' }}
-            </p><p class="text-sm text-muted">
-              {{ new Date(batch.created_at).toLocaleDateString('pt-BR') }} · {{ batch.quantity_received }} recebidos · {{ batch.quantity_on_hand }} restantes
-            </p>
-          </div>
-          <UBadge
-            v-if="batch.expires_on"
-            color="neutral"
-            variant="subtle"
-            :label="`Validade ${new Date(`${batch.expires_on}T12:00:00`).toLocaleDateString('pt-BR')}`"
-          />
-        </div>
+        <StoreInventoryBatchList :batches="batches.slice(0, 5)" />
         <p
           v-if="!batches.length && !loading"
           class="rounded-xl border border-dashed border-default p-5 text-sm text-muted"
@@ -1077,6 +1093,74 @@ onUnmounted(() => {
           Nenhuma entrada registrada.
         </p>
       </div>
+      <UButton
+        v-if="batches.length > 5"
+        label="Mostrar mais entradas"
+        icon="i-lucide-list"
+        color="neutral"
+        variant="outline"
+        class="mt-3 min-h-11"
+        @click="openHistory"
+      />
+      <UModal
+        v-model:open="historyOpen"
+        title="Histórico de entradas"
+        description="Consulte as entradas de estoque, da mais recente para a mais antiga."
+        :ui="{ content: 'left-0 top-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 rounded-none', header: 'pr-14 pt-[max(1rem,env(safe-area-inset-top))]', close: 'top-[max(1rem,env(safe-area-inset-top))]', body: 'overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))]' }"
+      >
+        <template #body>
+          <div class="mx-auto max-w-3xl space-y-4">
+            <BrandLoader
+              v-if="historyLoading"
+              label="Carregando entradas…"
+            />
+            <UAlert
+              v-if="historyError"
+              color="error"
+              variant="subtle"
+              :description="historyError"
+            />
+            <UButton
+              v-if="historyError"
+              label="Tentar novamente"
+              color="neutral"
+              variant="outline"
+              class="min-h-11"
+              @click="loadHistory(historyRequestedPage)"
+            />
+            <template v-if="!historyLoading && !historyError">
+              <StoreInventoryBatchList :batches="historyBatches" />
+              <p
+                v-if="!historyBatches.length"
+                class="text-sm text-muted"
+              >
+                Nenhuma entrada encontrada.
+              </p>
+              <div class="flex flex-wrap items-center justify-between gap-3 border-t border-default pt-4">
+                <span class="text-sm text-muted">Página {{ historyPage }}</span>
+                <div class="flex gap-2">
+                  <UButton
+                    label="Anterior"
+                    color="neutral"
+                    variant="outline"
+                    class="min-h-11"
+                    :disabled="historyPage === 1"
+                    @click="loadHistory(historyPage - 1)"
+                  />
+                  <UButton
+                    label="Próxima"
+                    color="neutral"
+                    variant="outline"
+                    class="min-h-11"
+                    :disabled="!historyHasNext"
+                    @click="loadHistory(historyPage + 1)"
+                  />
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+      </UModal>
     </section>
   </div>
 </template>
