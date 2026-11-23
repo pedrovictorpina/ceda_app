@@ -21,6 +21,7 @@ interface InventoryBatch {
   product_id: string
   quantity_received: number
   quantity_on_hand: number
+  unit_cost: number | null
   expires_on: string | null
   created_at: string
   product: { name: string } | { name: string }[] | null
@@ -47,6 +48,17 @@ const removeExistingPhoto = ref(false)
 const showExcludedProducts = ref(false)
 const productSearch = ref('')
 const productModalOpen = ref(false)
+const initialStock = reactive({ enabled: false, quantity: null as number | null, unitCost: null as number | null, expiresOn: '' })
+const editBatches = ref<InventoryBatch[]>([])
+const editBatchesLoading = ref(false)
+const editBatchesError = ref(false)
+const initialUnitCost = computed({
+  get: () => initialStock.unitCost === null ? '' : String(initialStock.unitCost),
+  set: (value: string) => { initialStock.unitCost = value === '' ? null : Number(value) }
+})
+const canCreateProduct = computed(() => productForm.name.trim().length >= 2 && productForm.name.trim().length <= 120
+  && (!initialStock.enabled || (initialStock.quantity !== null && Number.isFinite(initialStock.quantity) && initialStock.quantity > 0
+    && (initialStock.unitCost === null || (Number.isFinite(initialStock.unitCost) && initialStock.unitCost >= 0)))))
 const productPriceInput = computed({
   get: () => formatPriceInput(productForm.salePrice),
   set: (value: string) => { productForm.salePrice = parsePriceInput(value) }
@@ -130,13 +142,30 @@ function cancelEdit() {
   removeExistingPhoto.value = false
 }
 
-function startEdit(product: Product) {
+async function startEdit(product: Product) {
   cancelEdit()
+  feedback.value = ''
   deletingProductId.value = null
   editingProductId.value = product.id
   editForm.name = product.name
   editForm.description = product.description || ''
   editForm.salePrice = Number(product.sale_price)
+  editBatches.value = []
+  editBatchesError.value = false
+  editBatchesLoading.value = true
+  const { $supabase } = useNuxtApp()
+  if (!$supabase) {
+    editBatchesError.value = true
+    editBatchesLoading.value = false
+    return
+  }
+  const { data, error } = await $supabase.from('inventory_batches')
+    .select('id, product_id, quantity_received, quantity_on_hand, unit_cost, expires_on, created_at')
+    .eq('product_id', product.id).order('created_at', { ascending: false })
+  if (editingProductId.value !== product.id) return
+  editBatches.value = (data || []) as InventoryBatch[]
+  editBatchesError.value = !!error
+  editBatchesLoading.value = false
 }
 
 async function loadInventory() {
@@ -220,7 +249,7 @@ async function setProductActive(product: Product, active: boolean) {
 
 async function createProduct() {
   const { $supabase } = useNuxtApp()
-  if (!$supabase || !auth.profile || !canManageInventory.value || !productForm.name.trim() || productForm.salePrice < 0) return
+  if (!$supabase || !auth.profile || !canManageInventory.value || !canCreateProduct.value || productForm.salePrice < 0) return
   saving.value = true
   const productId = randomId()
   let imagePath: string | null = null
@@ -248,20 +277,37 @@ async function createProduct() {
     sale_price: productForm.salePrice, created_by: auth.profile.id,
     ...(imagePath ? { image_path: imagePath } : {})
   })
-  saving.value = false
   if (error) {
     if (imagePath) await $supabase.storage.from('store-product-images').remove([imagePath])
     feedback.value = 'Não foi possível cadastrar o produto.'
   } else {
+    let entryFailed = false
+    if (initialStock.enabled && initialStock.quantity !== null) {
+      const { error: batchError } = await $supabase.from('inventory_batches').insert({
+        product_id: productId, quantity_received: initialStock.quantity, quantity_on_hand: initialStock.quantity,
+        unit_cost: initialStock.unitCost, expires_on: initialStock.expiresOn || null, received_by: auth.profile.id
+      })
+      entryFailed = !!batchError
+    }
+    if (entryFailed) {
+      batchForm.quantity = initialStock.quantity || 1
+      batchForm.unitCost = initialStock.unitCost
+      batchForm.expiresOn = initialStock.expiresOn
+    }
     productForm.name = ''
     productForm.description = ''
     productForm.salePrice = 0
     clearProductPhoto()
     productModalOpen.value = false
-    batchForm.productId = productId
-    feedback.value = 'Produto cadastrado. Agora adicione uma entrada de estoque.'
+    batchForm.productId = entryFailed || !initialStock.enabled ? productId : ''
+    feedback.value = entryFailed ? 'Produto cadastrado, mas a entrada não foi registrada. Confira os dados em Entrada de estoque e tente novamente.' : initialStock.enabled ? 'Produto cadastrado e entrada de estoque registrada.' : 'Produto cadastrado. Agora adicione uma entrada de estoque.'
+    initialStock.enabled = false
+    initialStock.quantity = null
+    initialStock.unitCost = null
+    initialStock.expiresOn = ''
     await loadInventory()
   }
+  saving.value = false
 }
 
 async function addBatch() {
@@ -316,13 +362,6 @@ onUnmounted(() => {
         class="min-h-11"
       />
       <UButton
-        label="Novo produto"
-        color="neutral"
-        variant="outline"
-        class="min-h-11"
-        @click="productModalOpen = true"
-      />
-      <UButton
         to="#entrada-estoque"
         label="Entrada de estoque"
         color="neutral"
@@ -339,6 +378,13 @@ onUnmounted(() => {
         @click="loadInventory"
       />
     </div>
+    <UButton
+      v-if="canManageInventory && !productModalOpen"
+      icon="i-lucide-plus"
+      label="Novo produto"
+      class="hide-while-typing fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-30 min-h-14 rounded-full px-5 shadow-xl md:bottom-6 md:right-8"
+      @click="feedback = ''; productModalOpen = true"
+    />
     <UAlert
       v-if="feedback"
       class="mt-5"
@@ -397,11 +443,27 @@ onUnmounted(() => {
         <UModal
           v-model:open="productModalOpen"
           title="Cadastrar produto"
-          description="Depois, registre a entrada no estoque."
+          description="Informe os dados de venda e, se já tiver unidades, registre a primeira entrada."
+          :dismissible="!saving"
+          :close="!saving"
           :ui="{ content: 'left-0 top-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 rounded-none sm:left-1/2 sm:top-1/2 sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-2rem)] sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg', header: 'pr-14 pt-[max(1rem,env(safe-area-inset-top))]', close: 'top-[max(1rem,env(safe-area-inset-top))]', body: 'overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))]' }"
         >
           <template #body>
-            <div class="space-y-4">
+            <div class="space-y-5">
+              <UAlert
+                v-if="feedback"
+                color="error"
+                variant="subtle"
+                :description="feedback"
+              />
+              <div>
+                <h3 class="font-semibold">
+                  Dados do produto
+                </h3>
+                <p class="mt-1 text-sm text-muted">
+                  Essas informações aparecem na loja.
+                </p>
+              </div>
               <UFormField
                 label="Nome"
                 hint="Como aparecerá para o membro"
@@ -413,7 +475,7 @@ onUnmounted(() => {
                   class="w-full"
                 />
               </UFormField>
-              <UFormField label="Descrição">
+              <UFormField label="Descrição (opcional)">
                 <UTextarea
                   v-model="productForm.description"
                   :rows="2"
@@ -421,6 +483,25 @@ onUnmounted(() => {
                   class="w-full"
                 />
               </UFormField>
+              <UFormField
+                label="Preço de venda"
+                description="Valor cobrado por unidade."
+              >
+                <UInput
+                  v-model="productPriceInput"
+                  type="text"
+                  inputmode="numeric"
+                  class="w-full"
+                />
+              </UFormField>
+              <div class="border-t border-default pt-4">
+                <h3 class="font-semibold">
+                  Foto do produto
+                </h3>
+                <p class="mt-1 text-sm text-muted">
+                  Opcional. A imagem será exibida na loja.
+                </p>
+              </div>
               <UFormField
                 label="Foto do produto (opcional)"
                 hint="JPG, PNG ou WebP de até 5 MB"
@@ -447,22 +528,63 @@ onUnmounted(() => {
                   @click="clearProductPhoto"
                 />
               </div>
-              <UFormField
-                label="Preço de venda"
-                hint="Valor cobrado ao membro"
-              >
-                <UInput
-                  v-model="productPriceInput"
-                  type="text"
-                  inputmode="numeric"
-                  class="w-full"
+              <div class="space-y-4 border-t border-default pt-4">
+                <div>
+                  <h3 class="font-semibold">
+                    Estoque inicial
+                  </h3>
+                  <p class="mt-1 text-sm text-muted">
+                    Registre as unidades que você já tem. Você também pode fazer isso depois.
+                  </p>
+                </div>
+                <UCheckbox
+                  v-model="initialStock.enabled"
+                  label="Adicionar estoque agora"
                 />
-              </UFormField>
+                <div
+                  v-if="initialStock.enabled"
+                  class="space-y-4"
+                >
+                  <UFormField
+                    label="Quantidade recebida"
+                    description="Quantidade de unidades desta entrada."
+                  >
+                    <UInput
+                      v-model.number="initialStock.quantity"
+                      type="number"
+                      inputmode="decimal"
+                      min="0.001"
+                      step="0.001"
+                      class="w-full"
+                    />
+                  </UFormField>
+                  <UFormField
+                    label="Custo por unidade (opcional)"
+                    description="Quanto custou cada unidade, não o valor total."
+                  >
+                    <UInput
+                      v-model="initialUnitCost"
+                      type="number"
+                      inputmode="decimal"
+                      min="0"
+                      step="0.01"
+                      placeholder="Ex.: 3,50"
+                      class="w-full"
+                    />
+                  </UFormField>
+                  <UFormField
+                    label="Validade (opcional)"
+                    description="Data de validade das unidades desta entrada."
+                  >
+                    <AppDatePicker v-model="initialStock.expiresOn" />
+                  </UFormField>
+                </div>
+              </div>
               <UButton
                 block
                 class="min-h-11"
                 :loading="saving"
-                :disabled="!productForm.name.trim()"
+                :disabled="!canCreateProduct"
                 label="Cadastrar produto"
                 icon="i-lucide-plus"
                 @click="createProduct"
@@ -693,80 +815,169 @@ onUnmounted(() => {
               />
             </div>
           </div>
-          <div
-            v-if="editingProductId === product.id"
-            class="mt-4 space-y-3 border-t border-default pt-4"
+          <UModal
+            :open="editingProductId === product.id"
+            title="Editar produto"
+            :description="`Atualize os dados de ${product.name} e confira o estoque por entrada.`"
+            :dismissible="!saving"
+            :close="!saving"
+            :ui="{ content: 'left-0 top-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 rounded-none sm:left-1/2 sm:top-1/2 sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-2rem)] sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg', header: 'pr-14 pt-[max(1rem,env(safe-area-inset-top))]', close: 'top-[max(1rem,env(safe-area-inset-top))]', body: 'overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))]' }"
+            @update:open="!$event && cancelEdit()"
           >
-            <UFormField label="Nome">
-              <UInput
-                v-model="editForm.name"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField label="Descrição">
-              <UTextarea
-                v-model="editForm.description"
-                :rows="2"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField label="Preço de venda">
-              <UInput
-                v-model="editPriceInput"
-                type="text"
-                inputmode="numeric"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField
-              label="Trocar foto"
-              hint="JPG, PNG ou WebP de até 5 MB"
-            >
-              <StorePhotoPicker
-                :input-key="editPhotoInputKey"
-                @file="selectEditPhoto"
-              />
-            </UFormField>
-            <img
-              v-if="editPhotoPreview"
-              :src="editPhotoPreview"
-              alt="Prévia da nova foto"
-              class="size-20 rounded-xl object-cover"
-            >
-            <UButton
-              v-if="product.image_path && !removeExistingPhoto && !editPhoto"
-              size="sm"
-              color="neutral"
-              variant="ghost"
-              icon="i-lucide-image-off"
-              label="Remover foto atual"
-              @click="removeExistingPhoto = true"
-            />
-            <p
-              v-if="removeExistingPhoto"
-              class="text-sm text-muted"
-            >
-              A foto atual será removida ao salvar.
-            </p>
-            <div class="flex flex-wrap gap-2">
-              <UButton
-                size="sm"
-                icon="i-lucide-save"
-                label="Salvar alterações"
-                :loading="saving"
-                :disabled="!canSaveEdit"
-                @click="saveProduct(product)"
-              />
-              <UButton
-                size="sm"
-                color="neutral"
-                variant="ghost"
-                label="Cancelar"
-                :disabled="saving"
-                @click="cancelEdit"
-              />
-            </div>
-          </div>
+            <template #body>
+              <div class="space-y-4">
+                <UAlert
+                  v-if="feedback"
+                  color="error"
+                  variant="subtle"
+                  :description="feedback"
+                />
+                <div>
+                  <h3 class="font-semibold">
+                    Dados do produto
+                  </h3>
+                  <p class="mt-1 text-sm text-muted">
+                    Nome, descrição e preço exibidos na loja.
+                  </p>
+                </div>
+                <UFormField label="Nome">
+                  <UInput
+                    v-model="editForm.name"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="Descrição">
+                  <UTextarea
+                    v-model="editForm.description"
+                    :rows="2"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="Preço de venda">
+                  <UInput
+                    v-model="editPriceInput"
+                    type="text"
+                    inputmode="numeric"
+                    class="w-full"
+                  />
+                </UFormField>
+                <div class="border-t border-default pt-4">
+                  <h3 class="font-semibold">
+                    Foto do produto
+                  </h3>
+                  <p class="mt-1 text-sm text-muted">
+                    {{ editPhotoPreview ? 'Prévia da nova foto' : removeExistingPhoto ? 'A foto será removida ao salvar.' : product.image_path ? 'Foto atual' : 'Nenhuma foto cadastrada.' }}
+                  </p>
+                  <img
+                    v-if="editPhotoPreview || (product.image_path && !removeExistingPhoto)"
+                    :src="editPhotoPreview || productImageUrl(product.image_path)"
+                    alt="Prévia da foto do produto"
+                    class="mt-3 size-28 rounded-xl object-cover"
+                  >
+                </div>
+                <UFormField label="Escolher outra foto">
+                  <StorePhotoPicker
+                    :input-key="editPhotoInputKey"
+                    @file="selectEditPhoto"
+                  />
+                </UFormField>
+                <UButton
+                  v-if="editPhotoPreview"
+                  color="neutral"
+                  variant="ghost"
+                  class="min-h-11"
+                  icon="i-lucide-undo-2"
+                  label="Descartar nova foto"
+                  @click="clearEditPhoto"
+                />
+                <UButton
+                  v-if="product.image_path && !removeExistingPhoto && !editPhoto"
+                  size="sm"
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-image-off"
+                  label="Remover foto atual"
+                  class="min-h-11"
+                  @click="removeExistingPhoto = true"
+                />
+                <UButton
+                  v-if="removeExistingPhoto"
+                  color="neutral"
+                  variant="ghost"
+                  class="min-h-11"
+                  label="Manter foto atual"
+                  @click="removeExistingPhoto = false"
+                />
+                <div class="space-y-3 border-t border-default pt-4">
+                  <div>
+                    <h3 class="font-semibold">
+                      Estoque e entradas
+                    </h3>
+                    <p class="mt-1 text-sm text-muted">
+                      {{ product.stock_available }} unidades disponíveis para venda, descontadas as reservas.
+                    </p>
+                    <p class="mt-1 text-sm text-muted">
+                      Cada entrada pode ter custo e validade diferentes. Para adicionar unidades, use Entrada de estoque.
+                    </p>
+                  </div>
+                  <p
+                    v-if="editBatchesLoading"
+                    class="text-sm text-muted"
+                  >
+                    Carregando entradas…
+                  </p>
+                  <p
+                    v-else-if="editBatchesError"
+                    class="text-sm text-error"
+                  >
+                    Não foi possível carregar as entradas deste produto.
+                  </p>
+                  <p
+                    v-else-if="!editBatches.length"
+                    class="text-sm text-muted"
+                  >
+                    Nenhuma entrada registrada para este produto.
+                  </p>
+                  <div
+                    v-for="batch in editBatches"
+                    :key="batch.id"
+                    class="rounded-lg border border-default p-3 text-sm"
+                  >
+                    <p class="font-medium">
+                      Entrada em {{ new Date(batch.created_at).toLocaleDateString('pt-BR') }}
+                    </p>
+                    <p class="mt-1 text-muted">
+                      {{ batch.quantity_received }} recebidas · {{ batch.quantity_on_hand }} em estoque neste lote
+                    </p>
+                    <p class="mt-1 text-muted">
+                      Custo por unidade: {{ batch.unit_cost === null ? 'Não informado' : formatMoney(batch.unit_cost) }}
+                    </p>
+                    <p class="mt-1 text-muted">
+                      Validade: {{ batch.expires_on ? new Date(`${batch.expires_on}T12:00:00`).toLocaleDateString('pt-BR') : 'Não informada' }}
+                    </p>
+                  </div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <UButton
+                    class="min-h-11"
+                    icon="i-lucide-save"
+                    label="Salvar alterações"
+                    :loading="saving"
+                    :disabled="!canSaveEdit"
+                    @click="saveProduct(product)"
+                  />
+                  <UButton
+                    class="min-h-11"
+                    color="neutral"
+                    variant="ghost"
+                    label="Cancelar"
+                    :disabled="saving"
+                    @click="cancelEdit"
+                  />
+                </div>
+              </div>
+            </template>
+          </UModal>
         </UCard>
         <UCard
           v-if="!activeProducts.length"

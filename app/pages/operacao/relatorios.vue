@@ -55,6 +55,7 @@ const selectedCashDayId = computed(() => typeof route.query.dia === 'string' ? r
 const cashDay = ref<CashDay | null>(null)
 const cashFlowAvailable = ref<boolean | null>(null)
 const recentDays = ref<CashDay[]>([])
+const showCashDays = ref(false)
 const paymentLabels = { cash: 'Dinheiro', pix: 'Pix', debit_card: 'Débito', credit_card: 'Crédito' }
 
 const presets: Array<{ value: Preset, label: string }> = [
@@ -89,13 +90,21 @@ const statusBarClasses: Record<OrderStatus, string> = {
 const selectedPreset = ref<Preset>('month')
 const startDate = ref('')
 const endDate = ref('')
+const appliedDates = ref({ start: '', end: '' })
+const ordersPage = ref(1)
+const pageSize = 10
 const orders = ref<StoreOrder[]>([])
 const products = ref<StoreProduct[]>([])
 const batches = ref<InventoryBatch[]>([])
 const loading = ref(true)
+const reportComplete = ref(false)
 const exporting = ref(false)
 const feedback = ref('')
 const reportPanel = ref<HTMLElement | null>(null)
+const pageCount = computed(() => Math.max(1, Math.ceil(orders.value.length / pageSize)))
+const paginatedOrders = computed(() => orders.value.slice((ordersPage.value - 1) * pageSize, ordersPage.value * pageSize))
+const pageStart = computed(() => orders.value.length ? (ordersPage.value - 1) * pageSize + 1 : 0)
+const pageEnd = computed(() => Math.min(ordersPage.value * pageSize, orders.value.length))
 const orderColumns: TableColumn<StoreOrder>[] = [
   { accessorKey: 'order_number', header: 'Pedido' },
   { accessorKey: 'created_at', header: 'Data' },
@@ -137,7 +146,7 @@ const effectiveDates = computed(() => {
 
 const rangeLabel = computed(() => {
   if (cashDay.value) return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(`${cashDay.value.business_date}T12:00:00Z`))
-  const { start, end } = effectiveDates.value
+  const { start, end } = appliedDates.value
   if (!start || !end) return 'Defina o período para consultar os dados.'
   const format = (date: string) => new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium' }).format(new Date(`${date}T00:00:00`))
   return `${format(start)} a ${format(end)}`
@@ -199,9 +208,14 @@ function formatDateTime(value: string) {
 
 function setPreset(preset: Preset) {
   selectedPreset.value = preset
+  if (preset === 'custom' && !startDate.value && !endDate.value) {
+    startDate.value = appliedDates.value.start
+    endDate.value = appliedDates.value.end
+  }
   if (preset !== 'custom') void loadReport()
 }
 
+let reportLoadVersion = 0
 async function loadReport() {
   const { $supabase } = useNuxtApp()
   if (!$supabase) {
@@ -216,11 +230,14 @@ async function loadReport() {
   }
 
   loading.value = true
+  reportComplete.value = false
+  const version = ++reportLoadVersion
   feedback.value = ''
   if (cashFlowAvailable.value === null) {
     const { error } = await $supabase.rpc('sync_store_cash_day')
     cashFlowAvailable.value = !error
   } else if (cashFlowAvailable.value) await $supabase.rpc('sync_store_cash_day')
+  if (version !== reportLoadVersion) return
   if (selectedCashDayId.value && !cashFlowAvailable.value) {
     feedback.value = 'O relatório por dia estará disponível após a atualização do banco.'
     loading.value = false
@@ -229,6 +246,7 @@ async function loadReport() {
   if (selectedCashDayId.value) {
     const dayResult = await $supabase.from('store_cash_days')
       .select('id, business_date, status, started_at, closed_at').eq('id', selectedCashDayId.value).maybeSingle()
+    if (version !== reportLoadVersion) return
     cashDay.value = dayResult.data as CashDay | null
     if (dayResult.error || !cashDay.value) {
       feedback.value = 'Não foi possível localizar este dia de caixa.'
@@ -237,23 +255,35 @@ async function loadReport() {
     }
   } else cashDay.value = null
   const endTimestamp = `${end}T23:59:59.999`
-  const ordersQuery = cashFlowAvailable.value
-    ? $supabase.from('store_orders').select('id, order_number, daily_order_number, daily_order_date, status, total_amount, created_at, payment_method, store_order_items(product_id, quantity, unit_price, product:store_products(name))')
-    : $supabase.from('store_orders').select('id, order_number, daily_order_number, daily_order_date, status, total_amount, created_at, store_order_items(product_id, quantity, unit_price, product:store_products(name))')
-  const filteredOrdersQuery = cashDay.value
-    ? ordersQuery.eq('cash_day_id', cashDay.value.id)
-    : ordersQuery.gte('created_at', `${start}T00:00:00`).lte('created_at', endTimestamp)
+  const dayId = cashDay.value?.id
+  async function fetchOrders() {
+    const all: StoreOrder[] = []
+    for (let offset = 0; ; offset += 500) {
+      const query = cashFlowAvailable.value
+        ? $supabase!.from('store_orders').select('id, order_number, daily_order_number, daily_order_date, status, total_amount, created_at, payment_method, store_order_items(product_id, quantity, unit_price, product:store_products(name))')
+        : $supabase!.from('store_orders').select('id, order_number, daily_order_number, daily_order_date, status, total_amount, created_at, store_order_items(product_id, quantity, unit_price, product:store_products(name))')
+      const filtered = dayId ? query.eq('cash_day_id', dayId) : query.gte('created_at', `${start}T00:00:00`).lte('created_at', endTimestamp)
+      const { data, error } = await filtered.order('created_at', { ascending: false }).order('id', { ascending: false }).range(offset, offset + 499)
+      if (error) return { data: null, error }
+      all.push(...(data as unknown as StoreOrder[]))
+      if (data.length < 500) return { data: all, error: null }
+    }
+  }
   const [ordersResult, productsResult, batchesResult] = await Promise.all([
-    filteredOrdersQuery.order('created_at', { ascending: false }).limit(1000),
+    fetchOrders(),
     $supabase.from('store_products').select('id, name, stock_available, active').order('name'),
     $supabase.from('inventory_batches').select('id, product_id, quantity_on_hand, expires_on, product:store_products(name)').gt('quantity_on_hand', 0).not('expires_on', 'is', null).order('expires_on')
   ])
+  if (version !== reportLoadVersion) return
   orders.value = ((ordersResult.data || []) as unknown as StoreOrder[]).map(order => ({ ...order, payment_method: order.payment_method || null }))
   products.value = (productsResult.data || []) as StoreProduct[]
   batches.value = (batchesResult.data || []) as InventoryBatch[]
   feedback.value = ordersResult.error || productsResult.error || batchesResult.error
     ? 'Não foi possível carregar todos os dados do relatório. Confirme sua permissão de operação.'
     : ''
+  appliedDates.value = { start, end }
+  ordersPage.value = 1
+  reportComplete.value = !ordersResult.error && !productsResult.error && !batchesResult.error
   loading.value = false
 }
 
@@ -397,33 +427,9 @@ watch(selectedCashDayId, () => {
     />
     <PageIntro
       :title="cashDay ? 'Fechamento do caixa' : 'Relatórios da Loja'"
-      description="Acompanhe vendas, formas de pagamento, fila de pedidos e riscos de estoque. O faturamento considera pedidos confirmados ou entregues."
+      description="Escolha um período ou um caixa encerrado para consultar vendas, movimentações e pedidos."
       icon="i-lucide-chart-no-axes-combined"
     />
-
-    <div
-      v-if="recentDays.length"
-      class="mb-5 flex flex-wrap items-center gap-2"
-    >
-      <span class="mr-1 text-sm font-medium text-muted">Dias de caixa:</span>
-      <UButton
-        v-for="day in recentDays"
-        :key="day.id"
-        :to="`/operacao/relatorios?dia=${day.id}`"
-        :label="new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }).format(new Date(`${day.business_date}T12:00:00Z`))"
-        :color="selectedCashDayId === day.id ? 'primary' : 'neutral'"
-        :variant="selectedCashDayId === day.id ? 'solid' : 'outline'"
-        size="sm"
-      />
-      <UButton
-        v-if="selectedCashDayId"
-        to="/operacao/relatorios"
-        label="Outros períodos"
-        color="neutral"
-        variant="ghost"
-        size="sm"
-      />
-    </div>
 
     <BrandLoader
       v-if="loading"
@@ -434,8 +440,11 @@ watch(selectedCashDayId, () => {
     <section class="rounded-2xl border border-default bg-elevated/30 p-4 shadow-sm sm:p-5">
       <div class="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
         <div>
-          <p class="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
-            Período de análise
+          <h2 class="text-lg font-bold">
+            O que você quer consultar?
+          </h2>
+          <p class="mt-1 text-sm text-muted">
+            Escolha um período ou consulte o fechamento de um caixa.
           </p>
           <div
             v-if="!cashDay"
@@ -447,16 +456,16 @@ watch(selectedCashDayId, () => {
               :label="preset.label"
               :color="selectedPreset === preset.value ? 'primary' : 'neutral'"
               :variant="selectedPreset === preset.value ? 'solid' : 'outline'"
-              size="sm"
+              class="min-h-11"
               @click="setPreset(preset.value)"
             />
           </div>
-          <p class="mt-3 flex items-center gap-2 text-sm text-muted">
+          <p class="mt-3 flex items-center gap-2 text-sm font-medium">
             <UIcon
               name="i-lucide-calendar-range"
               class="size-4 text-primary"
             />
-            {{ rangeLabel }}
+            {{ cashDay ? 'Caixa de' : 'Exibindo:' }} {{ rangeLabel }}
           </p>
         </div>
         <div class="flex flex-wrap items-end gap-3">
@@ -483,15 +492,55 @@ watch(selectedCashDayId, () => {
             color="neutral"
             variant="outline"
             icon="i-lucide-refresh-cw"
+            class="min-h-11 min-w-11 justify-center"
             :loading="loading"
             aria-label="Atualizar relatório"
             @click="loadReport"
           />
         </div>
       </div>
-      <div class="mt-4 border-t border-default pt-3 text-xs leading-5 text-muted">
-        Os indicadores consideram o período selecionado. Pedidos aguardando caixa continuam visíveis, mas só entram no faturamento após a confirmação.
+      <div
+        v-if="recentDays.length || cashDay"
+        class="mt-4 border-t border-default pt-3"
+      >
+        <UButton
+          label="Consultar um caixa encerrado"
+          color="neutral"
+          variant="ghost"
+          class="min-h-11"
+          :aria-expanded="showCashDays"
+          @click="showCashDays = !showCashDays"
+        />
+        <p
+          v-if="showCashDays"
+          class="mb-3 text-sm text-muted"
+        >
+          Cada opção mostra os pedidos de um caixa específico. São exibidos os oito fechamentos mais recentes.
+        </p>
+        <div
+          v-if="showCashDays"
+          class="flex flex-wrap gap-2"
+        >
+          <UButton
+            v-for="day in recentDays"
+            :key="day.id"
+            :to="`/operacao/relatorios?dia=${day.id}`"
+            :label="new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' }).format(new Date(`${day.business_date}T12:00:00Z`))"
+            :color="selectedCashDayId === day.id ? 'primary' : 'neutral'"
+            :variant="selectedCashDayId === day.id ? 'solid' : 'outline'"
+            class="min-h-11"
+          />
+        </div>
       </div>
+      <UButton
+        v-if="selectedCashDayId"
+        to="/operacao/relatorios"
+        label="Voltar aos períodos"
+        icon="i-lucide-arrow-left"
+        color="neutral"
+        variant="outline"
+        class="mt-3 min-h-11"
+      />
     </section>
 
     <UAlert
@@ -503,13 +552,14 @@ watch(selectedCashDayId, () => {
     />
 
     <StoreFinanceLedger
-      v-if="!loading && (cashDay || (effectiveDates.start && effectiveDates.end))"
-      :start="cashDay?.business_date || effectiveDates.start"
-      :end="cashDay?.business_date || effectiveDates.end"
+      v-if="!loading && reportComplete && (cashDay || (appliedDates.start && appliedDates.end))"
+      :start="cashDay?.business_date || appliedDates.start"
+      :end="cashDay?.business_date || appliedDates.end"
       :cash-day-id="cashDay?.id"
     />
 
     <section
+      v-if="reportComplete || loading"
       ref="reportPanel"
       class="mt-6"
       aria-labelledby="store-report-title"
@@ -517,7 +567,7 @@ watch(selectedCashDayId, () => {
       <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p class="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
-            Resumo operacional
+            Vendas e pedidos
           </p>
           <h2
             id="store-report-title"
@@ -525,6 +575,9 @@ watch(selectedCashDayId, () => {
           >
             {{ cashDay ? 'Indicadores do caixa' : 'Indicadores do período' }}
           </h2>
+          <p class="mt-1 text-sm text-muted">
+            {{ cashDay ? 'Pedidos vinculados a este caixa.' : 'Pedidos criados no período selecionado.' }} Valores de vendas consideram somente pedidos pagos. O resumo financeiro usa a data da confirmação do pagamento.
+          </p>
         </div>
         <div class="flex flex-wrap gap-2">
           <UButton
@@ -819,7 +872,7 @@ watch(selectedCashDayId, () => {
               <h3 class="font-semibold">
                 Pedidos do período
               </h3><p class="mt-1 text-sm text-muted">
-                Até 1.000 pedidos para preservar a resposta e a exportação no navegador.
+                {{ orders.length }} pedido(s) no total. Mostrando {{ pageStart }} a {{ pageEnd }}.
               </p>
             </div>
           </template>
@@ -828,7 +881,7 @@ watch(selectedCashDayId, () => {
             class="space-y-3 md:hidden"
           >
             <article
-              v-for="order in orders"
+              v-for="order in paginatedOrders"
               :key="order.id"
               class="rounded-xl border border-default p-3"
             >
@@ -854,7 +907,7 @@ watch(selectedCashDayId, () => {
           <UTable
             v-if="orders.length"
             class="hidden md:block"
-            :data="orders"
+            :data="paginatedOrders"
             :columns="orderColumns"
             :get-row-id="order => order.id"
             caption="Pedidos do período"
@@ -880,8 +933,37 @@ watch(selectedCashDayId, () => {
               <span class="font-semibold">{{ formatMoney(row.original.total_amount) }}</span>
             </template>
           </UTable>
+          <div
+            v-if="orders.length > pageSize"
+            class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-default pt-4"
+            aria-label="Paginação dos pedidos"
+          >
+            <p class="text-sm text-muted">
+              Página {{ ordersPage }} de {{ pageCount }}
+            </p>
+            <div class="flex gap-2">
+              <UButton
+                label="Anterior"
+                icon="i-lucide-chevron-left"
+                color="neutral"
+                variant="outline"
+                class="min-h-11"
+                :disabled="ordersPage <= 1"
+                @click="ordersPage--"
+              />
+              <UButton
+                label="Próxima"
+                trailing-icon="i-lucide-chevron-right"
+                color="neutral"
+                variant="outline"
+                class="min-h-11"
+                :disabled="ordersPage >= pageCount"
+                @click="ordersPage++"
+              />
+            </div>
+          </div>
           <p
-            v-else
+            v-if="!orders.length"
             class="py-8 text-center text-sm text-muted"
           >
             Nenhum pedido encontrado neste período.

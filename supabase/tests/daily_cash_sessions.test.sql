@@ -1,5 +1,5 @@
 begin;
-select plan(19);
+select plan(22);
 
 select has_table('public', 'store_cash_days', 'cash days are persisted');
 select has_table('public', 'store_cash_day_products', 'daily product selection is persisted');
@@ -21,6 +21,8 @@ insert into public.profiles (id, full_name, email) values
 
 insert into public.store_products (id, name, sale_price, created_by)
 values ('40000000-0000-0000-0000-000000000004', 'Produto do dia', 7.50, '40000000-0000-0000-0000-000000000001');
+insert into public.store_products (id, name, sale_price, created_by)
+values ('40000000-0000-0000-0000-000000000006', 'Produto adicional', 5.00, '40000000-0000-0000-0000-000000000001');
 insert into public.inventory_batches (product_id, quantity_received, quantity_on_hand, received_by)
 values ('40000000-0000-0000-0000-000000000004', 3, 3, '40000000-0000-0000-0000-000000000001');
 
@@ -49,11 +51,21 @@ select lives_ok(
   $$select public.start_store_cash_day((select id from public.store_cash_days where status = 'preparing'), null)$$,
   'cashier can start sales'
 );
+select lives_ok(
+  $$insert into public.store_cash_day_products (cash_day_id, product_id)
+    select id, '40000000-0000-0000-0000-000000000006' from public.store_cash_days where status = 'open'$$,
+  'cashier can add a product after opening'
+);
 
 reset role;
 select set_config('request.jwt.claims', '{"sub":"40000000-0000-0000-0000-000000000002","role":"authenticated","app_metadata":{"roles":["member"]}}', true);
 set local role authenticated;
 select is((select count(*)::integer from public.store_cash_days where status = 'open'), 1, 'member sees the open day');
+select throws_ok(
+  $$insert into public.store_cash_day_products (cash_day_id, product_id)
+    select id, '40000000-0000-0000-0000-000000000004' from public.store_cash_days where status = 'open'$$,
+  '42501', null, 'member cannot add products to an open day'
+);
 select lives_ok(
   $$insert into public.store_orders (id, buyer_id)
     values ('40000000-0000-0000-0000-000000000005', '40000000-0000-0000-0000-000000000002')$$,
@@ -91,6 +103,11 @@ reset role;
 select set_config('request.jwt.claims', '{"sub":"40000000-0000-0000-0000-000000000001","role":"authenticated","app_metadata":{"roles":["member","cashier"]}}', true);
 set local role authenticated;
 select lives_ok($$select public.close_store_cash_day((select id from public.store_cash_days where status = 'open'))$$, 'cashier can close the day');
+select throws_ok(
+  $$insert into public.store_cash_day_products (cash_day_id, product_id)
+    select id, '40000000-0000-0000-0000-000000000004' from public.store_cash_days where status = 'closed'$$,
+  '42501', null, 'cashier cannot add products after closing'
+);
 
 reset role;
 select set_config('request.jwt.claims', '{"sub":"40000000-0000-0000-0000-000000000002","role":"authenticated","app_metadata":{"roles":["member"]}}', true);

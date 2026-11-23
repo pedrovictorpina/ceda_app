@@ -19,6 +19,8 @@ const description = ref('')
 const amount = ref<number | null>(null)
 const pendingVoid = ref<string | null>(null)
 const showSales = ref(false)
+const showEntryForm = ref(false)
+const showEntries = ref(false)
 type PendingEntry = { id: string, entry_date: string, kind: FinanceKind, description: string, amount: number, created_by: string }
 const pendingEntry = ref<PendingEntry | null>(null)
 const entryStorageKey = computed(() => `ceda-finance-entry-${auth.profile?.id}`)
@@ -261,21 +263,21 @@ watch(() => [props.start, props.end, props.cashDayId], () => {
           id="finance-title"
           class="text-xl font-bold"
         >
-          Entradas e saídas
+          Resumo financeiro
         </h2><p class="mt-1 text-sm text-muted">
-          Vendas pela data da confirmação em São Paulo. Doações e saídas usam a data informada.
+          {{ cashDayId ? 'Vendas deste caixa. Doações e saídas correspondem à data do caixa.' : 'Vendas confirmadas, doações e saídas no período escolhido.' }}
         </p>
       </div>
       <div class="flex flex-wrap gap-2">
         <UButton
-          label="Planilha"
+          label="Planilha financeira"
           icon="i-lucide-sheet"
           class="min-h-11"
           :disabled="!ready || loading"
           @click="exportCsv"
         />
         <UButton
-          label="Imagem"
+          label="Imagem do financeiro"
           icon="i-lucide-image-down"
           color="neutral"
           variant="outline"
@@ -316,7 +318,7 @@ watch(() => [props.start, props.end, props.cashDayId], () => {
       </div>
     </div>
     <p class="mt-3 text-xs text-muted">
-      Saldo = vendas confirmadas + doações − saídas. Não inclui saldo anterior; compras de estoque não geram saída automática.
+      Saldo = vendas confirmadas + doações − saídas. Não inclui saldo anterior. Compras de estoque devem ser registradas como saída. As vendas usam a data de confirmação em São Paulo; doações e saídas usam a data informada.
     </p>
     <div
       v-if="ready && rows.length"
@@ -358,7 +360,17 @@ watch(() => [props.start, props.end, props.cashDayId], () => {
       variant="subtle"
       description="Há um lançamento aguardando confirmação. Tente novamente antes de registrar outro."
     />
+    <UButton
+      class="mt-4 min-h-11"
+      :label="showEntryForm ? 'Fechar formulário' : 'Registrar saída ou doação'"
+      :icon="showEntryForm ? 'i-lucide-x' : 'i-lucide-plus'"
+      color="neutral"
+      variant="outline"
+      :aria-expanded="showEntryForm || Boolean(pendingEntry)"
+      @click="showEntryForm = !showEntryForm"
+    />
     <UForm
+      v-if="showEntryForm || pendingEntry"
       :state="{ kind, entryDate, description, amount }"
       class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
       @submit="saveEntry"
@@ -413,11 +425,16 @@ watch(() => [props.start, props.end, props.cashDayId], () => {
       v-if="ready && entries.length"
       class="mt-5 space-y-2"
     >
-      <h3 class="font-semibold">
-        Lançamentos do período
-      </h3>
+      <UButton
+        :label="`${showEntries ? 'Ocultar' : 'Ver'} lançamentos do período (${entries.length})`"
+        color="neutral"
+        variant="ghost"
+        class="min-h-11"
+        :aria-expanded="showEntries"
+        @click="showEntries = !showEntries"
+      />
       <article
-        v-for="entry in entries"
+        v-for="entry in (showEntries ? entries : [])"
         :key="entry.id"
         class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-default p-3"
       >

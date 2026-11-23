@@ -137,9 +137,13 @@ async function prepareCashDay() {
 
 async function toggleCashDayProduct(productId: string) {
   const { $supabase } = useNuxtApp()
-  if (!$supabase || !cashDay.value || cashDay.value.status !== 'preparing') return
+  if (!$supabase || !cashDay.value || !['preparing', 'open'].includes(cashDay.value.status)) return
   saving.value = true
   const selected = cashDayProductIds.value.includes(productId)
+  if (selected && cashDay.value.status === 'open') {
+    saving.value = false
+    return
+  }
   const { error } = selected
     ? await $supabase.from('store_cash_day_products').delete().eq('cash_day_id', cashDay.value.id).eq('product_id', productId)
     : await $supabase.from('store_cash_day_products').insert({ cash_day_id: cashDay.value.id, product_id: productId })
@@ -230,26 +234,11 @@ onUnmounted(() => {
       :description="feedback"
     />
 
-    <div
-      v-if="canManageInventory"
-      class="mt-5 flex flex-wrap gap-2"
-    >
-      <UButton
-        to="#fila-atendimento"
-        label="Pagamentos e entregas"
-        icon="i-lucide-list-checks"
-        color="neutral"
-        variant="outline"
-        class="min-h-11"
-      />
-    </div>
-
     <UButton
       v-if="canManageInventory && !creatingOrder"
       icon="i-lucide-plus"
-      aria-label="Novo pedido avulso"
-      title="Novo pedido avulso"
-      class="hide-while-typing fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-30 grid size-14 place-items-center rounded-full shadow-xl md:bottom-6 md:right-8"
+      label="Novo pedido"
+      class="hide-while-typing fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-30 min-h-14 rounded-full px-5 shadow-xl md:bottom-6 md:right-8"
       @click="creatingOrder = true"
     />
 
@@ -378,6 +367,37 @@ onUnmounted(() => {
           variant="outline"
           @click="confirmingClose = true"
         />
+      </div>
+      <div
+        v-if="cashDay?.status === 'open'"
+        class="mt-5 border-t border-default pt-4"
+      >
+        <h3 class="font-semibold">
+          Adicionar produtos ao caixa
+        </h3>
+        <p class="mt-1 text-sm text-muted">
+          Produtos adicionados ficam disponíveis para novos pedidos.
+        </p>
+        <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <UButton
+            v-for="product in activeProducts.filter(item => !cashDayProductIds.includes(item.id))"
+            :key="product.id"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-circle-plus"
+            class="min-h-12 justify-start"
+            :disabled="saving || product.stock_available <= 0"
+            @click="toggleCashDayProduct(product.id)"
+          >
+            <span class="min-w-0 text-left"><strong class="block truncate">{{ product.name }}</strong><small class="block">{{ product.stock_available }} disponíveis</small></span>
+          </UButton>
+        </div>
+        <p
+          v-if="activeProducts.every(item => cashDayProductIds.includes(item.id))"
+          class="mt-3 text-sm text-muted"
+        >
+          Todos os produtos ativos já foram adicionados.
+        </p>
       </div>
       <div
         v-if="confirmingClose && cashDay?.status === 'open'"
