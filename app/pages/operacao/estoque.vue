@@ -48,14 +48,20 @@ const removeExistingPhoto = ref(false)
 const showExcludedProducts = ref(false)
 const productSearch = ref('')
 const productModalOpen = ref(false)
-const initialStock = reactive({ enabled: false, quantity: null as number | null, unitCost: null as number | null, expiresOn: '' })
+const initialStock = reactive({ quantity: null as number | null, unitCost: null as number | null, expiresOn: '' })
+const initialQuantity = computed({
+  get: () => initialStock.quantity === null ? '' : String(initialStock.quantity),
+  set: (value: string) => { initialStock.quantity = value.trim() === '' ? null : Number(value) }
+})
+const hasInitialStock = computed(() => initialStock.quantity !== null && initialStock.quantity > 0)
 const editBatches = ref<InventoryBatch[]>([])
 const editBatchesLoading = ref(false)
 const editBatchesError = ref(false)
+const showBatchHistory = ref(false)
 const canCreateProduct = computed(() => productForm.name.trim().length >= 2 && productForm.name.trim().length <= 120
   && Number.isFinite(productForm.salePrice) && productForm.salePrice >= 0 && productForm.salePrice <= 9999999999.99
-  && (!initialStock.enabled || (initialStock.quantity !== null && Number.isFinite(initialStock.quantity) && initialStock.quantity > 0
-    && (initialStock.unitCost === null || (Number.isFinite(initialStock.unitCost) && initialStock.unitCost >= 0 && initialStock.unitCost <= 9999999999.99)))))
+  && (initialStock.quantity === null || (Number.isFinite(initialStock.quantity) && initialStock.quantity >= 0))
+  && (initialStock.unitCost === null || (Number.isFinite(initialStock.unitCost) && initialStock.unitCost >= 0 && initialStock.unitCost <= 9999999999.99)))
 const previewProduct = ref<Product | null>(null)
 
 const canManageInventory = computed(() => canOperateStore(auth.profile))
@@ -138,6 +144,7 @@ function cancelEdit() {
 
 async function startEdit(product: Product) {
   cancelEdit()
+  showBatchHistory.value = false
   deletingProductId.value = null
   editingProductId.value = product.id
   feedback.value = ''
@@ -274,7 +281,7 @@ async function createProduct() {
     feedback.value = 'Não foi possível cadastrar o produto.'
   } else {
     let entryFailed = false
-    if (initialStock.enabled && initialStock.quantity !== null) {
+    if (hasInitialStock.value && initialStock.quantity !== null) {
       const { error: batchError } = await $supabase.from('inventory_batches').insert({ product_id: productId, quantity_received: initialStock.quantity, quantity_on_hand: initialStock.quantity, unit_cost: initialStock.unitCost, expires_on: initialStock.expiresOn || null, received_by: auth.profile.id })
       entryFailed = !!batchError
     }
@@ -285,7 +292,7 @@ async function createProduct() {
     productModalOpen.value = false
     await loadInventory()
     const product = products.value.find(item => item.id === productId)
-    if (product && (entryFailed || !initialStock.enabled)) {
+    if (product && (entryFailed || !hasInitialStock.value)) {
       void startEdit(product)
       if (entryFailed) {
         batchForm.quantity = initialStock.quantity || 1
@@ -293,8 +300,7 @@ async function createProduct() {
         batchForm.expiresOn = initialStock.expiresOn
       }
     }
-    feedback.value = entryFailed ? 'Produto cadastrado, mas a entrada falhou. Confira os dados e tente novamente.' : initialStock.enabled ? 'Produto cadastrado e entrada registrada.' : 'Produto cadastrado. Agora adicione uma entrada de estoque.'
-    initialStock.enabled = false
+    feedback.value = entryFailed ? 'Produto cadastrado, mas a entrada falhou. Confira os dados e tente novamente.' : hasInitialStock.value ? 'Produto cadastrado e entrada registrada.' : 'Produto cadastrado. Agora adicione uma entrada de estoque.'
     initialStock.quantity = null
     initialStock.unitCost = null
     initialStock.expiresOn = ''
@@ -444,40 +450,6 @@ onUnmounted(() => {
                 class="w-full"
               />
             </UFormField>
-            <UFormField label="Descrição">
-              <UTextarea
-                v-model="productForm.description"
-                :rows="2"
-                placeholder="Ex.: Preparado na hora"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField
-              label="Foto do produto (opcional)"
-              hint="JPG, PNG ou WebP de até 5 MB"
-            >
-              <StorePhotoPicker
-                :input-key="productPhotoInputKey"
-                @file="selectProductPhoto"
-              />
-            </UFormField>
-            <div
-              v-if="productPhotoPreview"
-              class="flex items-center gap-3"
-            >
-              <img
-                :src="productPhotoPreview"
-                alt="Prévia da foto do produto"
-                class="size-20 rounded-xl object-cover"
-              >
-              <UButton
-                label="Remover foto"
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-x"
-                @click="clearProductPhoto"
-              />
-            </div>
             <UFormField
               label="Preço de venda"
               description="Valor cobrado por unidade."
@@ -491,7 +463,7 @@ onUnmounted(() => {
                 @update:model-value="productForm.salePrice = parseMoneyInput(String($event))"
               />
             </UFormField>
-            <div class="space-y-4 border-t border-default pt-4">
+            <div class="space-y-4 rounded-xl border border-default bg-elevated/40 p-4">
               <div>
                 <h3 class="font-semibold">
                   Estoque inicial
@@ -499,27 +471,24 @@ onUnmounted(() => {
                   Registre as unidades que você já tem ou faça isso depois.
                 </p>
               </div>
-              <UCheckbox
-                v-model="initialStock.enabled"
-                label="Adicionar estoque agora"
-              />
-              <div
-                v-if="initialStock.enabled"
-                class="space-y-4"
+              <UFormField
+                label="Quantidade inicial (opcional)"
+                description="Deixe em branco ou informe zero para cadastrar sem estoque."
               >
-                <UFormField
-                  label="Quantidade recebida"
-                  description="Quantidade de unidades desta entrada."
-                >
-                  <UInput
-                    v-model.number="initialStock.quantity"
-                    type="number"
-                    inputmode="decimal"
-                    min="0.001"
-                    step="0.001"
-                    class="w-full"
-                  />
-                </UFormField>
+                <UInput
+                  v-model="initialQuantity"
+                  type="number"
+                  inputmode="decimal"
+                  min="0"
+                  step="0.001"
+                  placeholder="Ex.: 10"
+                  class="w-full"
+                />
+              </UFormField>
+              <div
+                v-if="hasInitialStock"
+                class="grid gap-4 sm:grid-cols-2"
+              >
                 <UFormField
                   label="Custo por unidade (opcional)"
                   description="Quanto custou cada unidade, não o valor total."
@@ -538,6 +507,45 @@ onUnmounted(() => {
                 >
                   <AppDatePicker v-model="initialStock.expiresOn" />
                 </UFormField>
+              </div>
+            </div>
+            <div class="space-y-4 border-t border-default pt-4">
+              <h3 class="font-semibold">
+                Detalhes opcionais
+              </h3>
+              <UFormField label="Descrição">
+                <UTextarea
+                  v-model="productForm.description"
+                  :rows="2"
+                  placeholder="Ex.: Preparado na hora"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField
+                label="Foto do produto (opcional)"
+                hint="JPG, PNG ou WebP de até 5 MB"
+              >
+                <StorePhotoPicker
+                  :input-key="productPhotoInputKey"
+                  @file="selectProductPhoto"
+                />
+              </UFormField>
+              <div
+                v-if="productPhotoPreview"
+                class="flex items-center gap-3"
+              >
+                <img
+                  :src="productPhotoPreview"
+                  alt="Prévia da foto do produto"
+                  class="size-20 rounded-xl object-cover"
+                >
+                <UButton
+                  label="Remover foto"
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-x"
+                  @click="clearProductPhoto"
+                />
               </div>
             </div>
             <UButton
@@ -626,29 +634,29 @@ onUnmounted(() => {
           v-for="product in visibleProducts"
           :key="product.id"
           class="min-w-0 overflow-hidden"
-          :ui="{ body: 'p-3 sm:p-6' }"
+          :ui="{ body: 'p-2.5 sm:p-4' }"
         >
           <UButton
             v-if="product.image_path"
             type="button"
             color="neutral"
             variant="ghost"
-            class="focus-ring mb-4 w-full rounded-xl p-0"
+            class="focus-ring mb-2 w-full rounded-lg p-0"
             :aria-label="`Ampliar foto de ${product.name}`"
             @click="previewProduct = product"
           >
             <img
               :src="productImageUrl(product.image_path)"
               :alt="product.name"
-              class="aspect-video w-full rounded-xl object-cover"
+              class="h-20 w-full rounded-lg object-cover sm:h-32"
               loading="lazy"
             >
           </UButton>
           <div class="flex flex-wrap items-start justify-between gap-2">
             <div class="min-w-0">
-              <p class="break-words font-semibold">
+              <p class="break-words text-sm font-semibold leading-snug">
                 {{ product.name }}
-              </p><p class="mt-1 text-sm text-muted">
+              </p><p class="mt-1 text-xs text-muted sm:text-sm">
                 {{ formatMoney(product.sale_price) }} por unidade
               </p>
             </div><UBadge
@@ -657,28 +665,27 @@ onUnmounted(() => {
               :label="product.stock_available <= 5 ? 'Baixo' : 'Em dia'"
             />
           </div>
-          <div class="mt-5 flex items-end justify-between">
+          <div class="mt-3 flex items-end justify-between">
             <div>
               <p class="text-xs font-medium uppercase tracking-wide text-muted">
                 Disponível
               </p><p
-                class="mt-1 text-3xl font-bold"
+                class="mt-1 text-xl font-bold"
                 :class="product.stock_available <= 5 ? 'text-warning' : 'text-primary'"
               >
                 {{ product.stock_available }}
               </p>
-            </div><UIcon
-              name="i-lucide-boxes"
-              class="size-8 text-muted/50"
-            />
+            </div>
           </div>
-          <div class="mt-4 flex flex-wrap gap-2 border-t border-default pt-4">
+          <div class="mt-2 flex items-center gap-2 border-t border-default pt-2">
             <UButton
               size="sm"
               color="neutral"
               variant="outline"
               icon="i-lucide-pencil"
-              label="Editar"
+              :aria-label="`Editar ${product.name}`"
+              title="Editar produto"
+              class="min-h-11 min-w-11 justify-center"
               :disabled="saving"
               @click="startEdit(product)"
             />
@@ -687,7 +694,9 @@ onUnmounted(() => {
               color="error"
               variant="ghost"
               icon="i-lucide-trash-2"
-              label="Excluir"
+              :aria-label="`Excluir ${product.name}`"
+              title="Excluir produto"
+              class="min-h-11 min-w-11 justify-center"
               :disabled="saving"
               @click="deletingProductId = product.id"
             />
@@ -760,7 +769,7 @@ onUnmounted(() => {
         description="Atualize o produto ou registre uma entrada de estoque."
         :dismissible="!saving"
         :close="!saving"
-        :ui="{ content: 'left-0 top-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 rounded-none', header: 'pr-14 pt-[max(1rem,env(safe-area-inset-top))]', close: 'top-[max(1rem,env(safe-area-inset-top))]', body: 'overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))]' }"
+        :ui="{ content: 'left-0 top-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 rounded-none sm:left-1/2 sm:top-1/2 sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-2rem)] sm:max-w-2xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg', header: 'pr-14 pt-[max(1rem,env(safe-area-inset-top))]', close: 'top-[max(1rem,env(safe-area-inset-top))]', body: 'overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))]' }"
         @update:open="!$event && cancelEdit()"
       >
         <template #body>
@@ -771,6 +780,17 @@ onUnmounted(() => {
               variant="subtle"
               :description="feedback"
             />
+            <div class="rounded-xl border border-default bg-elevated/40 p-4">
+              <p class="text-sm text-muted">
+                Estoque disponível para venda
+              </p>
+              <p class="mt-1 text-2xl font-bold">
+                {{ editingProduct.stock_available }} <span class="text-sm font-normal text-muted">unidades</span>
+              </p>
+              <p class="mt-1 text-xs text-muted">
+                O saldo já desconta os pedidos reservados.
+              </p>
+            </div>
             <div class="space-y-4">
               <div>
                 <h3 class="font-semibold">
@@ -853,6 +873,7 @@ onUnmounted(() => {
               <div class="flex flex-wrap gap-2">
                 <UButton
                   size="sm"
+                  class="min-h-11"
                   icon="i-lucide-save"
                   label="Salvar alterações"
                   :loading="saving"
@@ -861,6 +882,7 @@ onUnmounted(() => {
                 />
                 <UButton
                   size="sm"
+                  class="min-h-11"
                   color="neutral"
                   variant="ghost"
                   label="Cancelar"
@@ -875,29 +897,37 @@ onUnmounted(() => {
                   Estoque e entradas
                 </h3>
                 <p class="mt-1 text-sm text-muted">
-                  {{ editingProduct.stock_available }} unidades disponíveis para venda, descontadas as reservas. Cada entrada pode ter custo e validade diferentes.
+                  Consulte entradas anteriores ou registre mais unidades abaixo.
                 </p>
               </div>
+              <UButton
+                color="neutral"
+                variant="outline"
+                class="min-h-11"
+                :label="showBatchHistory ? 'Ocultar entradas anteriores' : 'Ver entradas anteriores'"
+                :aria-expanded="showBatchHistory"
+                @click="showBatchHistory = !showBatchHistory"
+              />
               <p
-                v-if="editBatchesLoading"
+                v-if="showBatchHistory && editBatchesLoading"
                 class="text-sm text-muted"
               >
                 Carregando entradas…
               </p>
               <p
-                v-else-if="editBatchesError"
+                v-else-if="showBatchHistory && editBatchesError"
                 class="text-sm text-error"
               >
                 Não foi possível carregar as entradas.
               </p>
               <p
-                v-else-if="!editBatches.length"
+                v-else-if="showBatchHistory && !editBatches.length"
                 class="text-sm text-muted"
               >
                 Nenhuma entrada registrada.
               </p>
               <div
-                v-for="batch in editBatches"
+                v-for="batch in (showBatchHistory ? editBatches : [])"
                 :key="batch.id"
                 class="rounded-lg border border-default p-3 text-sm"
               >
@@ -916,29 +946,35 @@ onUnmounted(() => {
               </div>
               <div>
                 <h3 class="text-lg font-semibold">
-                  Entrada de estoque
+                  Adicionar estoque
                 </h3>
                 <p class="text-sm text-muted">
                   Informe a quantidade recebida, o custo de cada unidade e a validade deste lote.
                 </p>
               </div>
               <UFormField
-                label="Quantidade"
-                hint="Aceita unidades fracionadas"
+                label="Quantidade recebida"
+                description="Informe quantas unidades estão entrando."
               >
                 <UInput
                   v-model.number="batchForm.quantity"
                   type="number"
                   min="0.001"
                   step="0.001"
+                  inputmode="decimal"
+                  class="w-full"
                 />
               </UFormField>
-              <UFormField label="Custo unitário opcional">
+              <UFormField
+                label="Custo por unidade (opcional)"
+                description="Valor pago por unidade, não o total."
+              >
                 <UInput
                   :model-value="batchForm.unitCost === null ? '' : formatMoney(batchForm.unitCost)"
                   type="text"
                   inputmode="numeric"
                   maxlength="22"
+                  class="w-full"
                   @update:model-value="batchForm.unitCost = /\d/.test(String($event)) ? parseMoneyInput(String($event)) : null"
                 />
               </UFormField>
@@ -947,6 +983,7 @@ onUnmounted(() => {
               </UFormField>
               <UButton
                 :loading="saving"
+                class="min-h-11"
                 :disabled="!Number.isFinite(batchForm.quantity) || batchForm.quantity <= 0 || (batchForm.unitCost !== null && (!Number.isFinite(batchForm.unitCost) || batchForm.unitCost > 9999999999.99))"
                 label="Registrar entrada"
                 icon="i-lucide-package-plus"
