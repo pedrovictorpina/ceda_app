@@ -498,6 +498,7 @@ useCreateFromQuery(openCreate)
                 color="neutral"
                 variant="outline"
                 icon="i-lucide-pencil"
+                class="ml-auto"
                 label="Editar"
                 @click="editContent(item)"
               />

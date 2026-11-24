@@ -544,7 +544,7 @@ useCreateFromQuery(openCreate)
               </p>
               <div
                 v-if="!event.cancelled_at"
-                class="flex flex-wrap gap-2"
+                class="ml-auto flex flex-wrap justify-end gap-2"
               >
                 <UButton
                   size="sm"
