@@ -138,35 +138,12 @@ watch(() => route.path, (path) => {
         </UBadge>
       </div>
       <div class="flex items-center gap-1 sm:gap-2">
-        <div
+        <USwitch
           v-if="canUseAdminView"
-          class="hidden items-center rounded-xl bg-elevated p-1 lg:flex"
-          aria-label="Alternar visão"
-        >
-          <UButton
-            size="sm"
-            :variant="!isAdminView ? 'soft' : 'ghost'"
-            :color="!isAdminView ? 'primary' : 'neutral'"
-            label="Visão membro"
-            @click="changeView('member')"
-          />
-          <UButton
-            size="sm"
-            :variant="isAdminView ? 'soft' : 'ghost'"
-            :color="isAdminView ? 'primary' : 'neutral'"
-            label="Visão administrador"
-            @click="changeView('administrator')"
-          />
-        </div>
-        <UButton
-          v-if="canUseAdminView"
-          class="lg:hidden"
-          color="neutral"
-          variant="ghost"
-          :icon="isAdminView ? 'i-lucide-user-round' : 'i-lucide-shield-check'"
-          :aria-label="isAdminView ? 'Alternar para Visão membro' : 'Alternar para Visão administrador'"
+          :model-value="isAdminView"
+          :aria-label="isAdminView ? 'Visão administrador' : 'Visão membro'"
           :title="isAdminView ? 'Visão administrador' : 'Visão membro'"
-          @click="changeView(isAdminView ? 'member' : 'administrator')"
+          @update:model-value="changeView($event ? 'administrator' : 'member')"
         />
         <NavigationAppNotificationsButton />
         <UColorModeButton />
@@ -174,6 +151,7 @@ watch(() => route.path, (path) => {
           color="neutral"
           variant="ghost"
           icon="i-lucide-circle-user-round"
+          class="hidden md:inline-flex"
           :aria-label="`Perfil de ${auth.profile?.name || 'membro'}`"
           title="Perfil"
           to="/perfil"

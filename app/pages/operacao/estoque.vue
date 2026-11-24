@@ -48,6 +48,7 @@ const productPhotoPreview = ref('')
 const productPhotoInputKey = ref(0)
 const batchForm = reactive({ quantity: 1, unitCost: null as number | null, expiresOn: '' })
 const editingProductId = ref<string | null>(null)
+const editingSection = ref('produto')
 const deletingProductId = ref<string | null>(null)
 const editForm = reactive({ name: '', description: '', salePrice: 0 })
 const editPhoto = ref<File | null>(null)
@@ -149,6 +150,7 @@ function cancelEdit() {
 
 async function startEdit(product: Product) {
   cancelEdit()
+  editingSection.value = 'produto'
   showBatchHistory.value = false
   deletingProductId.value = null
   editingProductId.value = product.id
@@ -181,7 +183,7 @@ async function loadInventory() {
   loading.value = true
   const [productsResult, batchesResult] = await Promise.all([
     $supabase.from('store_products').select('id, name, description, image_path, sale_price, stock_available, active').order('name'),
-    $supabase.from('inventory_batches').select('id, product_id, quantity_received, quantity_on_hand, expires_on, created_at, product:store_products(name)').order('created_at', { ascending: false }).order('id', { ascending: false }).limit(6)
+    $supabase.from('inventory_batches').select('id, product_id, quantity_received, quantity_on_hand, expires_on, created_at, product:store_products(name)').order('created_at', { ascending: false }).order('id', { ascending: false }).limit(4)
   ])
   products.value = (productsResult.data || []) as Product[]
   batches.value = (batchesResult.data || []) as unknown as InventoryBatch[]
@@ -409,7 +411,7 @@ onUnmounted(() => {
       v-if="canManageInventory && !productModalOpen && !editingProduct"
       icon="i-lucide-plus"
       label="Novo produto"
-      class="hide-while-typing fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-30 min-h-14 rounded-full px-5 shadow-xl md:bottom-6 md:right-8"
+      class="hide-while-typing fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-30 min-h-11 rounded-full px-4 shadow-xl md:bottom-6 md:right-8"
       @click="feedback = ''; productModalOpen = true"
     />
     <UAlert
@@ -419,13 +421,19 @@ onUnmounted(() => {
       variant="subtle"
       :description="feedback"
     />
-    <BrandLoader
-      v-if="loading"
-      class="my-5"
-      label="Carregando estoque…"
-    />
     <div
-      v-if="canManageInventory"
+      v-if="loading && canManageInventory"
+      class="mt-5 grid grid-cols-3 gap-2"
+      aria-label="Carregando resumo do estoque"
+    >
+      <USkeleton
+        v-for="item in 3"
+        :key="item"
+        class="h-20 rounded-xl"
+      />
+    </div>
+    <div
+      v-else-if="canManageInventory"
       class="mt-5 grid grid-cols-3 gap-2"
     >
       <UCard :ui="{ body: 'p-3 sm:p-4' }">
@@ -444,7 +452,7 @@ onUnmounted(() => {
       </UCard>
       <UCard :ui="{ body: 'p-3 sm:p-4' }">
         <p class="text-xs text-muted">
-          Precisam de reposição
+          Para repor
         </p><p class="mt-1 text-xl font-bold text-warning">
           {{ lowStockProducts.length }}
         </p>
@@ -606,7 +614,7 @@ onUnmounted(() => {
           <p class="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
             Saldo atual
           </p>
-          <h2 class="mt-1 text-2xl font-bold">
+          <h2 class="mt-1 text-lg font-bold sm:text-2xl">
             Visão do estoque
           </h2>
           <p class="mt-1 text-sm text-muted">
@@ -711,7 +719,7 @@ onUnmounted(() => {
               </p>
             </div>
           </div>
-          <div class="mt-2 flex items-center gap-2 border-t border-default pt-2">
+          <div class="mt-2 flex items-center justify-end gap-2 border-t border-default pt-2">
             <UButton
               size="sm"
               color="neutral"
@@ -825,7 +833,17 @@ onUnmounted(() => {
                 O saldo já desconta os pedidos reservados.
               </p>
             </div>
-            <div class="space-y-4">
+            <UTabs
+              v-model="editingSection"
+              :items="[{ label: 'Dados do produto', value: 'produto', icon: 'i-lucide-pencil' }, { label: 'Entrada de estoque', value: 'estoque', icon: 'i-lucide-package-plus' }]"
+              :content="false"
+              :ui="{ trigger: 'min-h-11 flex-1' }"
+              aria-label="Seções da edição"
+            />
+            <div
+              v-show="editingSection === 'produto'"
+              class="space-y-4"
+            >
               <div>
                 <h3 class="font-semibold">
                   Dados do produto
@@ -860,18 +878,47 @@ onUnmounted(() => {
                 <h3 class="font-semibold">
                   Foto do produto
                 </h3>
-                <p class="mt-1 text-sm text-muted">
-                  {{ editPhotoPreview ? 'Prévia da nova foto' : removeExistingPhoto ? 'A foto será removida ao salvar.' : editingProduct.image_path ? 'Foto atual' : 'Nenhuma foto cadastrada.' }}
-                </p>
-                <img
-                  v-if="editPhotoPreview || (editingProduct.image_path && !removeExistingPhoto)"
-                  :src="editPhotoPreview || productImageUrl(editingProduct.image_path)"
-                  alt="Prévia da foto do produto"
-                  class="mt-3 size-28 rounded-xl object-cover"
+                <p
+                  v-if="removeExistingPhoto"
+                  class="mt-1 text-sm text-muted"
                 >
+                  A foto será removida ao salvar.
+                </p>
+                <div
+                  v-if="editPhotoPreview || (editingProduct.image_path && !removeExistingPhoto)"
+                  class="mt-3 flex items-center gap-3"
+                >
+                  <img
+                    :src="editPhotoPreview || productImageUrl(editingProduct.image_path)"
+                    alt="Prévia da foto do produto"
+                    class="size-20 rounded-xl object-cover"
+                  >
+                  <div>
+                    <p class="text-sm text-muted">
+                      {{ editPhotoPreview ? 'Nova foto selecionada' : 'Foto atual' }}
+                    </p>
+                    <UButton
+                      v-if="editPhotoPreview"
+                      color="neutral"
+                      variant="ghost"
+                      class="min-h-11"
+                      label="Descartar nova foto"
+                      @click="clearEditPhoto"
+                    />
+                    <UButton
+                      v-else
+                      size="sm"
+                      color="neutral"
+                      variant="ghost"
+                      icon="i-lucide-image-off"
+                      label="Remover foto atual"
+                      @click="removeExistingPhoto = true"
+                    />
+                  </div>
+                </div>
               </div>
               <UFormField
-                label="Trocar foto"
+                label="Foto do produto"
                 hint="JPG, PNG ou WebP de até 5 MB"
               >
                 <StorePhotoPicker
@@ -880,23 +927,6 @@ onUnmounted(() => {
                 />
               </UFormField>
               <UButton
-                v-if="editPhotoPreview"
-                color="neutral"
-                variant="ghost"
-                class="min-h-11"
-                label="Descartar nova foto"
-                @click="clearEditPhoto"
-              />
-              <UButton
-                v-if="editingProduct.image_path && !removeExistingPhoto && !editPhoto"
-                size="sm"
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-image-off"
-                label="Remover foto atual"
-                @click="removeExistingPhoto = true"
-              />
-              <UButton
                 v-if="removeExistingPhoto"
                 color="neutral"
                 variant="ghost"
@@ -904,7 +934,7 @@ onUnmounted(() => {
                 label="Manter foto atual"
                 @click="removeExistingPhoto = false"
               />
-              <div class="flex flex-wrap gap-2">
+              <div class="flex flex-wrap justify-end gap-2">
                 <UButton
                   size="sm"
                   class="min-h-11"
@@ -925,7 +955,10 @@ onUnmounted(() => {
                 />
               </div>
             </div>
-            <section class="space-y-4 border-t border-default pt-5">
+            <section
+              v-show="editingSection === 'estoque'"
+              class="space-y-4"
+            >
               <div>
                 <h3 class="font-semibold">
                   Estoque e entradas
@@ -1017,7 +1050,7 @@ onUnmounted(() => {
               </UFormField>
               <UButton
                 :loading="saving"
-                class="min-h-11"
+                class="min-h-11 ml-auto flex w-fit"
                 :disabled="!Number.isFinite(batchForm.quantity) || batchForm.quantity <= 0 || (batchForm.unitCost !== null && (!Number.isFinite(batchForm.unitCost) || batchForm.unitCost > 9999999999.99))"
                 label="Registrar entrada"
                 icon="i-lucide-package-plus"
@@ -1082,10 +1115,18 @@ onUnmounted(() => {
         Entradas recentes
       </h2>
       <p class="mt-1 text-sm text-muted">
-        Os cinco lotes mais recentes e o saldo de cada um.
+        Os três lotes mais recentes e o saldo de cada um.
       </p>
-      <div class="mt-4 space-y-2">
-        <StoreInventoryBatchList :batches="batches.slice(0, 5)" />
+      <USkeleton
+        v-if="loading"
+        class="mt-4 h-24 rounded-xl"
+        aria-label="Carregando entradas recentes"
+      />
+      <div
+        v-else
+        class="mt-4 space-y-2"
+      >
+        <StoreInventoryBatchList :batches="batches.slice(0, 3)" />
         <p
           v-if="!batches.length && !loading"
           class="rounded-xl border border-dashed border-default p-5 text-sm text-muted"
@@ -1094,7 +1135,7 @@ onUnmounted(() => {
         </p>
       </div>
       <UButton
-        v-if="batches.length > 5"
+        v-if="!loading && batches.length > 3"
         label="Mostrar mais entradas"
         icon="i-lucide-list"
         color="neutral"

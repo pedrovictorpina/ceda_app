@@ -2,8 +2,8 @@ const memberRoutes = new Set([
   '/inicio', '/palavra-do-dia', '/noticias', '/galeria', '/social', '/eventos', '/loja',
   '/sementinhas', '/sementinhas/turmas', '/ovelhinhas', '/celulas', '/comunidade', '/feed',
   '/oracao', '/aniversariantes', '/perfil', '/notificacoes', '/salvos', '/sobre', '/contato',
-  '/horarios-de-culto', '/campanhas', '/privacidade', '/admin', '/admin/pessoas',
-  '/admin/agenda', '/admin/conteudo', '/admin/auditoria', '/operacao', '/operacao/estoque', '/operacao/relatorios'
+  '/horarios-de-culto', '/campanhas', '/privacidade', '/design-system', '/admin', '/admin/pessoas',
+  '/admin/agenda', '/admin/conteudo', '/admin/auditoria', '/operacao', '/operacao/estoque', '/operacao/financeiro', '/operacao/relatorios'
 ])
 
 export function isPublicSessionRoute(route: { meta: { layout?: unknown } }) {

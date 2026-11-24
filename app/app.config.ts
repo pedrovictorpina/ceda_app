@@ -9,6 +9,9 @@ export default defineAppConfig({
         base: 'rounded-xl font-semibold shadow-sm max-md:min-h-11 max-md:min-w-11'
       },
       compoundVariants: [{
+        square: true,
+        class: 'justify-center'
+      }, {
         color: 'primary',
         variant: 'solid',
         class: 'hover:bg-[var(--ui-primary-hover)] active:bg-[var(--ui-primary-hover)] focus-visible:outline-primary'

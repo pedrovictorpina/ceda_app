@@ -26,6 +26,7 @@ Os componentes de domínio continuam reutilizáveis: `NavigationAppShell`, `Stor
 
 ## Cuidados de integração
 
+- Alinhe os botões de ação à direita por padrão, preservando navegação, acessibilidade e componentes cuja função exige outra posição.
 - Passe o estado existente para `UForm` e mantenha a validação de domínio e os erros atuais. Formulários com validação própria conservam `novalidate`. Botões no rodapé de gavetas continuam apontando ao `id` do formulário pelo atributo `form`.
 - `UInput type="file"` entrega o evento nativo em `change`. Ao abrir um campo por referência, use `inputRef`, por exemplo `avatarInput.value?.inputRef?.click()`. Preserve formatos aceitos, limites e `capture="environment"` onde já existe captura pela câmera.
 - Destinos e permissões continuam em `useAppNavigation` e nos helpers existentes. Marque o item ativo usando a resolução de rotas do projeto e mantenha um nome acessível mesmo na barra lateral recolhida.

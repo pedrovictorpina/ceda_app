@@ -38,6 +38,7 @@ const sections: NavigationSection[] = [
     tabs: [
       { label: 'Atendimento', icon: 'i-lucide-package-check', to: '/operacao', requires: 'store_operator' },
       { label: 'Estoque', icon: 'i-lucide-boxes', to: '/operacao/estoque', requires: 'store_operator' },
+      { label: 'Saídas e doações', icon: 'i-lucide-hand-coins', to: '/operacao/financeiro', requires: 'store_operator' },
       { label: 'Relatórios', icon: 'i-lucide-chart-no-axes-combined', to: '/operacao/relatorios', requires: 'store_operator' }
     ]
   }

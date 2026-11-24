@@ -7,6 +7,7 @@ import {
   findActiveTab,
   findSectionForPath,
   isAdministrationPath,
+  isOperationTabTransition,
   pickBottomNavItems,
   pushRecentRoute,
   searchNavigation
@@ -34,6 +35,14 @@ const sections: NavigationSection[] = [
 ]
 
 describe('navigation', () => {
+  it('recognizes only transitions between operation tabs', () => {
+    expect(isOperationTabTransition('/operacao', '/operacao/estoque')).toBe(true)
+    expect(isOperationTabTransition('/operacao/estoque', '/operacao/relatorios')).toBe(true)
+    expect(isOperationTabTransition('/operacao/financeiro', '/operacao/relatorios')).toBe(true)
+    expect(isOperationTabTransition('/inicio', '/operacao')).toBe(false)
+    expect(isOperationTabTransition('/operacao', '/operacao/outro')).toBe(false)
+    expect(isOperationTabTransition('/operacao', '/operacao')).toBe(false)
+  })
   it('keeps management context in classrooms and does not match unrelated prefixes', () => {
     expect(isAdministrationPath('/sementinhas/turmas')).toBe(true)
     expect(isAdministrationPath('/admin/pessoas')).toBe(true)

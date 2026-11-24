@@ -13,6 +13,8 @@ describe('continuity after authentication', () => {
     expect(safeAuthReturnTo('/oracao')).toBe('/oracao')
     expect(safeAuthReturnTo('/salvos')).toBe('/salvos')
     expect(safeAuthReturnTo('/admin/pessoas')).toBe('/admin/pessoas')
+    expect(safeAuthReturnTo('/design-system')).toBe('/design-system')
+    expect(safeAuthReturnTo('/operacao/financeiro')).toBe('/operacao/financeiro')
   })
 
   it.each([

@@ -51,6 +51,7 @@ const selectionAvailable = ref(false)
 const closingMode = ref<'manual' | 'automatic'>('manual')
 const autoCloseTime = ref('22:00')
 const confirmingClose = ref(false)
+const preparingCashOpen = ref(false)
 const closeError = ref('')
 const cancellingOrderId = ref<string | null>(null)
 const fulfillingOrderId = ref<string | null>(null)
@@ -156,7 +157,10 @@ async function prepareCashDay() {
   const { error } = await $supabase.rpc('create_store_cash_day')
   saving.value = false
   feedback.value = error ? 'Não foi possível preparar o caixa de hoje.' : 'Dia preparado. Selecione os produtos antes de iniciar as vendas.'
-  if (!error) await loadOperation()
+  if (!error) {
+    await loadOperation()
+    preparingCashOpen.value = cashDay.value?.status === 'preparing'
+  }
 }
 
 async function syncCashDayProducts() {
@@ -223,8 +227,12 @@ async function startCashDay() {
   saving.value = true
   const { error } = await $supabase.rpc('start_store_cash_day', { p_day_id: cashDay.value.id, p_auto_close_time: autoCloseTimeValue })
   saving.value = false
-  feedback.value = error ? error.message : 'Caixa aberto. Os produtos selecionados estão disponíveis na loja.'
-  if (!error) await loadOperation()
+  if (error) console.error('Erro ao iniciar vendas:', error)
+  feedback.value = error ? 'Não foi possível iniciar as vendas. Confira a seleção e tente novamente.' : 'Caixa aberto. Os produtos selecionados estão disponíveis na loja.'
+  if (!error) {
+    preparingCashOpen.value = false
+    await loadOperation()
+  }
 }
 
 async function closeCashDay() {
@@ -287,11 +295,6 @@ onUnmounted(() => {
       :description="operationDescription"
       icon="i-lucide-package-check"
     />
-    <BrandLoader
-      v-if="loading"
-      class="my-5"
-      label="Carregando operação…"
-    />
     <UAlert
       v-if="feedback"
       class="mt-5"
@@ -301,7 +304,7 @@ onUnmounted(() => {
     />
 
     <UButton
-      v-if="canManageInventory && !creatingOrder"
+      v-if="canManageInventory && !creatingOrder && !loading"
       icon="i-lucide-plus"
       label="Novo pedido"
       class="hide-while-typing fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-30 min-h-14 rounded-full px-5 shadow-xl md:bottom-6 md:right-8"
@@ -355,16 +358,21 @@ onUnmounted(() => {
       </template>
     </UModal>
 
+    <USkeleton
+      v-if="loading && canManageInventory"
+      class="mt-4 h-40 rounded-2xl"
+      aria-label="Carregando caixa"
+    />
     <section
-      v-if="canManageInventory && cashFlowAvailable"
-      class="mt-6 rounded-2xl border border-default bg-elevated/30 p-5"
+      v-else-if="canManageInventory && cashFlowAvailable"
+      class="mt-4 rounded-2xl border border-default bg-elevated/30 p-4 sm:mt-6 sm:p-5"
     >
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p class="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
+          <p class="text-xs font-semibold uppercase tracking-wide text-primary sm:text-sm sm:tracking-[0.18em]">
             Caixa do dia
           </p>
-          <h2 class="mt-1 text-2xl font-bold">
+          <h2 class="mt-1 text-lg font-bold sm:text-2xl">
             {{ cashDay?.status === 'open' ? 'Vendas em andamento' : cashDay?.status === 'preparing' ? 'Prepare as vendas' : 'Inicie um novo dia' }}
           </h2>
           <p class="mt-1 text-sm text-muted">
@@ -379,92 +387,30 @@ onUnmounted(() => {
       </div>
       <div
         v-if="!cashDay || (!isTodayCashDay && cashDay.status !== 'open')"
-        class="mt-5"
+        class="mt-3 flex justify-end sm:mt-5"
       >
         <UButton
-          label="Preparar caixa de hoje"
+          label="Preparar caixa"
           icon="i-lucide-calendar-plus"
+          size="sm"
           :loading="saving"
           @click="prepareCashDay"
         />
       </div>
       <div
         v-else-if="cashDay.status === 'preparing'"
-        class="mt-5 space-y-5"
+        class="mt-3 flex justify-end sm:mt-5"
       >
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p class="font-semibold">
-              Produtos para venda
-            </p>
-            <p
-              class="text-sm text-muted"
-              aria-live="polite"
-            >
-              {{ cashDayProductIds.length }} selecionado(s){{ syncingProducts ? ' · Salvando seleção…' : '' }}
-            </p>
-          </div>
-          <UButton
-            :label="allProductsSelected ? 'Desmarcar todos' : 'Selecionar todos'"
-            :icon="allProductsSelected ? 'i-lucide-square' : 'i-lucide-square-check'"
-            color="neutral"
-            variant="outline"
-            class="min-h-11"
-            :disabled="saving || !selectionAvailable || !availableProducts.length"
-            @click="toggleAllCashDayProducts"
-          />
-        </div>
-        <div class="grid max-h-96 grid-cols-2 gap-2 overflow-y-auto lg:grid-cols-3">
-          <UButton
-            v-for="product in activeProducts"
-            :key="product.id"
-            color="neutral"
-            variant="ghost"
-            type="button"
-            class="focus-ring flex min-h-12 min-w-0 items-center justify-between gap-2 rounded-xl border p-2 text-left sm:gap-3 sm:p-3"
-            :class="cashDayProductIds.includes(product.id) ? 'border-primary bg-primary/10 text-primary' : 'border-default'"
-            :disabled="saving || !selectionAvailable || (product.stock_available <= 0 && !cashDayProductIds.includes(product.id))"
-            :aria-pressed="cashDayProductIds.includes(product.id)"
-            @click="toggleCashDayProduct(product.id)"
-          >
-            <span class="min-w-0"><strong class="block break-words">{{ product.name }}</strong><small class="block">{{ product.stock_available > 0 ? `${product.stock_available} disponíveis` : 'Sem estoque' }}</small></span>
-            <UIcon
-              :name="cashDayProductIds.includes(product.id) ? 'i-lucide-circle-check' : 'i-lucide-circle-plus'"
-              class="size-5 shrink-0"
-            />
-          </UButton>
-        </div>
-        <div class="flex flex-wrap items-end gap-3 border-t border-default pt-4">
-          <UFormField label="Encerramento">
-            <USelect
-              v-model="closingMode"
-              :items="[{ label: 'Manual', value: 'manual' }, { label: 'Automático', value: 'automatic' }]"
-              class="w-44"
-            />
-          </UFormField>
-          <UFormField
-            v-if="closingMode === 'automatic'"
-            label="Horário de São Paulo"
-          >
-            <UInput
-              v-model="autoCloseTime"
-              type="time"
-              class="w-36"
-            />
-          </UFormField>
-          <UButton
-            label="Iniciar vendas"
-            icon="i-lucide-play"
-            class="min-h-11 sm:ml-auto"
-            :loading="saving"
-            :disabled="!canStartCashDay"
-            @click="startCashDay"
-          />
-        </div>
+        <UButton
+          label="Continuar preparação"
+          icon="i-lucide-settings-2"
+          size="sm"
+          @click="preparingCashOpen = true"
+        />
       </div>
       <div
         v-else-if="cashDay.status === 'open'"
-        class="mt-5 flex flex-wrap items-center justify-between gap-3"
+        class="mt-3 flex flex-wrap items-center justify-between gap-3 sm:mt-5"
       >
         <p class="text-sm text-muted">
           {{ cashDayProductIds.length }} produto(s) à venda. {{ cashDay.auto_close_at ? `Encerramento automático às ${new Date(cashDay.auto_close_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })}.` : 'Encerramento manual após o culto.' }}
@@ -510,6 +456,101 @@ onUnmounted(() => {
         </p>
       </div>
       <UModal
+        v-if="cashDay?.status === 'preparing'"
+        v-model:open="preparingCashOpen"
+        title="Preparar caixa do dia"
+        description="Escolha os produtos e a forma de encerramento antes de iniciar as vendas."
+        :dismissible="!saving && !syncingProducts"
+        :close="!saving && !syncingProducts"
+        :ui="{ content: 'left-0 top-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 rounded-none', header: 'pr-14 pt-[max(1rem,env(safe-area-inset-top))]', close: 'top-[max(1rem,env(safe-area-inset-top))]', body: 'overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))]' }"
+      >
+        <template #body>
+          <div class="mx-auto max-w-3xl space-y-5">
+            <UAlert
+              v-if="feedback"
+              color="neutral"
+              variant="subtle"
+              :description="feedback"
+            />
+            <UAlert
+              color="info"
+              variant="subtle"
+              title="Reposição com o caixa aberto"
+              description="Você pode repor no estoque os produtos selecionados aqui enquanto o caixa estiver aberto. Eles continuarão disponíveis para venda."
+            />
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p class="font-semibold">
+                  Produtos para venda
+                </p>
+                <p
+                  class="text-sm text-muted"
+                  aria-live="polite"
+                >
+                  {{ cashDayProductIds.length }} selecionado(s){{ syncingProducts ? ' · Salvando seleção…' : '' }}
+                </p>
+              </div>
+              <UButton
+                :label="allProductsSelected ? 'Desmarcar todos' : 'Selecionar todos'"
+                :icon="allProductsSelected ? 'i-lucide-square' : 'i-lucide-square-check'"
+                color="neutral"
+                variant="outline"
+                class="min-h-11"
+                :disabled="saving || !selectionAvailable || !availableProducts.length"
+                @click="toggleAllCashDayProducts"
+              />
+            </div>
+            <div class="grid max-h-96 grid-cols-2 gap-2 overflow-y-auto lg:grid-cols-3">
+              <UButton
+                v-for="product in activeProducts"
+                :key="product.id"
+                color="neutral"
+                variant="ghost"
+                type="button"
+                class="focus-ring flex min-h-12 min-w-0 items-center justify-between gap-2 rounded-xl border p-2 text-left sm:gap-3 sm:p-3"
+                :class="cashDayProductIds.includes(product.id) ? 'border-primary bg-primary/10 text-primary' : 'border-default'"
+                :disabled="saving || !selectionAvailable || (product.stock_available <= 0 && !cashDayProductIds.includes(product.id))"
+                :aria-pressed="cashDayProductIds.includes(product.id)"
+                @click="toggleCashDayProduct(product.id)"
+              >
+                <span class="min-w-0"><strong class="block break-words">{{ product.name }}</strong><small class="block">{{ product.stock_available > 0 ? `${product.stock_available} disponíveis` : 'Sem estoque' }}</small></span>
+                <UIcon
+                  :name="cashDayProductIds.includes(product.id) ? 'i-lucide-circle-check' : 'i-lucide-circle-plus'"
+                  class="size-5 shrink-0"
+                />
+              </UButton>
+            </div>
+            <div class="flex flex-wrap items-end gap-3 border-t border-default pt-4">
+              <UFormField label="Encerramento">
+                <USelect
+                  v-model="closingMode"
+                  :items="[{ label: 'Manual', value: 'manual' }, { label: 'Automático', value: 'automatic' }]"
+                  class="w-44"
+                />
+              </UFormField>
+              <UFormField
+                v-if="closingMode === 'automatic'"
+                label="Horário de São Paulo"
+              >
+                <UInput
+                  v-model="autoCloseTime"
+                  type="time"
+                  class="w-36"
+                />
+              </UFormField>
+              <UButton
+                label="Iniciar vendas"
+                icon="i-lucide-play"
+                class="ml-auto min-h-11"
+                :loading="saving"
+                :disabled="!canStartCashDay"
+                @click="startCashDay"
+              />
+            </div>
+          </div>
+        </template>
+      </UModal>
+      <UModal
         v-if="cashDay?.status === 'open'"
         v-model:open="confirmingClose"
         title="Encerrar o caixa agora?"
@@ -542,7 +583,7 @@ onUnmounted(() => {
       </UModal>
       <div
         v-if="cashDay?.status === 'closed' && isTodayCashDay"
-        class="mt-5 space-y-3"
+        class="mt-3 space-y-3 sm:mt-5"
       >
         <UAlert
           v-if="awaitingPaymentCount"
@@ -567,13 +608,13 @@ onUnmounted(() => {
 
     <section
       id="fila-atendimento"
-      class="mt-8 scroll-mt-4"
+      class="mt-6 scroll-mt-4 sm:mt-8"
     >
       <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p class="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
+          <p class="text-xs font-semibold uppercase tracking-wide text-primary sm:text-sm sm:tracking-[0.18em]">
             Fila de atendimento
-          </p><h2 class="mt-1 text-2xl font-bold">
+          </p><h2 class="mt-1 text-lg font-bold sm:text-2xl">
             Pedidos em andamento
           </h2><p class="mt-1 text-sm text-muted">
             Confirme o pagamento e, depois, finalize a entrega do pedido.

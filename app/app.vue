@@ -1,11 +1,20 @@
 <script setup lang="ts">
 import { pt_br } from '@nuxt/ui/locale'
 import { isPublicSessionRoute } from '~/utils/authFlow'
+import { isOperationTabTransition } from '~/utils/navigation'
 
 const { isLoading } = useLoadingIndicator()
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
+const operationTabTransition = ref(false)
+const removeNavigationGuard = router.beforeEach((to, from) => {
+  operationTabTransition.value = isOperationTabTransition(from.path, to.path)
+})
+onBeforeUnmount(removeNavigationGuard)
+watch(isLoading, (loading) => {
+  if (!loading) operationTabTransition.value = false
+})
 // The entry branch stays stable even if the first guard redirects a private
 // deep link to login. Public entries retain their server-rendered content.
 const clientOnlyEntry = useState('auth:client-only-entry', () => !isPublicSessionRoute(route))
@@ -44,7 +53,7 @@ useHead({
 <template>
   <UApp :locale="pt_br">
     <BrandLoadingScreen
-      v-if="checkingSession || isLoading"
+      v-if="checkingSession || (isLoading && !operationTabTransition)"
       :label="checkingSession ? 'Verificando seu acesso…' : 'Abrindo página…'"
     />
     <div

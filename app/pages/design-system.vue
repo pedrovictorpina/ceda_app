@@ -9,6 +9,7 @@ const tabs = [
   { label: 'Tipografia', icon: 'i-lucide-type', slot: 'type' as const },
   { label: 'Formulários', icon: 'i-lucide-list-checks', slot: 'forms' as const },
   { label: 'Componentes', icon: 'i-lucide-blocks', slot: 'components' as const },
+  { label: 'Listagens', icon: 'i-lucide-list', slot: 'lists' as const },
   { label: 'Feedback e modais', icon: 'i-lucide-message-circle-more', slot: 'feedback' as const }
 ]
 
@@ -32,18 +33,17 @@ const selectItems = [
 
 <template>
   <div>
-    <PageIntro
-      title="Design System"
-      description="Catálogo interativo dos padrões visuais e componentes reutilizados pela CEDA."
-      icon="i-lucide-palette"
-    />
+    <h1 class="design-page__title">
+      Design System
+    </h1>
 
     <UTabs
       :items="tabs"
       class="w-full"
+      :ui="{ list: 'design-page__tabs', trigger: 'design-page__tab' }"
     >
       <template #colors>
-        <div class="grid gap-4 pt-5 sm:grid-cols-3">
+        <div class="design-page__colors">
           <UCard>
             <div class="h-20 rounded-xl bg-primary" />
             <p class="mt-3 font-medium">
@@ -76,9 +76,9 @@ const selectItems = [
 
       <template #type>
         <div class="space-y-5 pt-5">
-          <h1 class="text-4xl font-black tracking-tight">
+          <p class="text-4xl font-black tracking-tight">
             Título principal
-          </h1>
+          </p>
           <h2 class="text-2xl font-bold">
             Título de seção
           </h2>
@@ -88,10 +88,6 @@ const selectItems = [
           <p class="text-sm text-muted">
             Texto auxiliar, metadados e instruções de preenchimento.
           </p>
-          <div class="flex flex-wrap items-center gap-3 pt-2">
-            <UColorModeButton />
-            <span class="text-sm text-muted">O tema pode ser alternado para validar os dois contextos.</span>
-          </div>
         </div>
       </template>
 
@@ -311,6 +307,65 @@ const selectItems = [
         </div>
       </template>
 
+      <template #lists>
+        <div class="design-page__lists">
+          <div>
+            <h2>Listagem com informações e status</h2>
+            <p>Exemplo de itens para consultar no celular ou no computador.</p>
+          </div>
+          <UCard>
+            <ul
+              class="design-page__list"
+              aria-label="Exemplo de eventos"
+            >
+              <li class="design-page__item">
+                <div>
+                  <strong>Culto de celebração</strong>
+                  <p>Domingo · 19h · Templo principal</p>
+                </div>
+                <UBadge
+                  color="success"
+                  variant="subtle"
+                  label="Confirmado"
+                />
+              </li>
+              <li class="design-page__item">
+                <div>
+                  <strong>Encontro de células</strong>
+                  <p>Quarta-feira · 20h · Salas da igreja</p>
+                </div>
+                <UBadge
+                  color="warning"
+                  variant="subtle"
+                  label="Em breve"
+                />
+              </li>
+              <li class="design-page__item">
+                <div>
+                  <strong>Ação social</strong>
+                  <p>Sábado · 9h · Ponto de encontro</p>
+                </div>
+                <UBadge
+                  color="neutral"
+                  variant="subtle"
+                  label="Planejado"
+                />
+              </li>
+            </ul>
+          </UCard>
+          <UCard>
+            <div class="design-page__empty">
+              <UIcon
+                name="i-lucide-inbox"
+                aria-hidden="true"
+              />
+              <h3>Nenhum item encontrado</h3>
+              <p>Quando houver novidades, elas aparecerão aqui.</p>
+            </div>
+          </UCard>
+        </div>
+      </template>
+
       <template #feedback>
         <div class="space-y-5 pt-5">
           <div class="grid gap-3 md:grid-cols-2">
@@ -451,3 +506,100 @@ const selectItems = [
     </UModal>
   </div>
 </template>
+
+<style scoped>
+.design-page__title {
+  margin-bottom: 1rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+:deep(.design-page__tabs) {
+  max-width: 100%;
+  overflow-x: auto;
+  justify-content: flex-start;
+  scrollbar-width: none;
+}
+
+:deep(.design-page__tabs)::-webkit-scrollbar {
+  display: none;
+}
+
+:deep(.design-page__tab) {
+  flex: 0 0 auto;
+  min-height: 2.75rem;
+}
+
+.design-page__colors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding-top: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .design-page__colors {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+  }
+}
+
+.design-page__lists {
+  display: grid;
+  gap: 1.25rem;
+  padding-top: 1.25rem;
+}
+
+.design-page__lists h2,
+.design-page__empty h3 {
+  font-weight: 600;
+}
+
+.design-page__lists p {
+  color: var(--ui-text-muted);
+  font-size: 0.875rem;
+}
+
+.design-page__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.design-page__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 0;
+}
+
+.design-page__item + .design-page__item {
+  border-top: 1px solid var(--ui-border);
+}
+
+.design-page__item:first-child { padding-top: 0; }
+.design-page__item:last-child { padding-bottom: 0; }
+
+.design-page__empty {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  padding: 1.5rem 0;
+  text-align: center;
+}
+
+.design-page__empty :deep(svg) {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--ui-text-muted);
+}
+
+@media (max-width: 400px) {
+  .design-page__item {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}
+</style>

@@ -13,7 +13,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     try {
       await auth.hydrate()
     } catch {
-      if (isPublicSessionRoute(to)) return
+      if (isPublicSessionRoute(to) || (import.meta.dev && to.path === '/design-system' && ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname))) return
       return navigateTo({ path: '/entrar', query: { next: safeAuthReturnTo(to.fullPath), motivo: 'verificar' } }, { replace: true })
     }
   }

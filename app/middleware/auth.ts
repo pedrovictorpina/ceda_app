@@ -4,6 +4,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // Browser storage is the source of the Supabase session. During SSR it is
   // unavailable, so let the client hydrate before deciding whether to redirect.
   if (import.meta.server) return
+  if (import.meta.dev && to.path === '/design-system' && ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)) return
 
   const auth = useAuthStore()
   if (auth.loading) {

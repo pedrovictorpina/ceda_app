@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { Capacitor } from '@capacitor/core'
 import { Camera, CameraErrorCode } from '@capacitor/camera'
+import { ref } from 'vue'
 
 defineProps<{ inputKey: number }>()
 const emit = defineEmits<{ file: [file: File] }>()
 const native = ref(false)
 const error = ref('')
 const busy = ref(false)
+const galleryInput = ref<{ inputRef: HTMLInputElement | null } | null>(null)
+const cameraInput = ref<{ inputRef: HTMLInputElement | null } | null>(null)
 onMounted(() => {
   native.value = Capacitor.isNativePlatform()
 })
@@ -51,46 +54,51 @@ async function takePhoto() {
 </script>
 
 <template>
-  <div class="grid gap-3 sm:grid-cols-2">
-    <UFormField label="Escolher da galeria">
-      <UInput
-        :key="`gallery-${inputKey}`"
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        class="w-full"
-        @change="fileSelected"
-      />
-    </UFormField>
-    <UFormField label="Tirar foto">
+  <div class="grid gap-3">
+    <div class="flex flex-wrap justify-end gap-2">
       <UButton
-        v-if="native"
-        label="Abrir câmera"
+        label="Selecionar arquivo"
+        icon="i-lucide-image"
+        variant="outline"
+        color="neutral"
+        class="min-h-11"
+        @click="galleryInput?.inputRef?.click()"
+      />
+      <UButton
+        label="Tirar foto"
         icon="i-lucide-camera"
         variant="outline"
         color="neutral"
         class="min-h-11"
         :loading="busy"
-        @click="takePhoto"
+        @click="native ? takePhoto() : cameraInput?.inputRef?.click()"
       />
-      <UInput
-        v-else
-        :key="`camera-${inputKey}`"
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        capture="environment"
-        class="w-full"
-        @change="fileSelected"
-      />
-    </UFormField>
-    <p class="text-xs text-muted sm:col-span-2">
-      JPG, PNG ou WebP de até 5 MB. Se o acesso for negado, permita câmera ou fotos nas configurações do aparelho.
-    </p>
+    </div>
+    <UInput
+      :key="`gallery-${inputKey}`"
+      ref="galleryInput"
+      type="file"
+      accept="image/jpeg,image/png,image/webp"
+      class="hidden"
+      hidden
+      @change="fileSelected"
+    />
+    <UInput
+      v-if="!native"
+      :key="`camera-${inputKey}`"
+      ref="cameraInput"
+      type="file"
+      accept="image/jpeg,image/png,image/webp"
+      capture="environment"
+      class="hidden"
+      hidden
+      @change="fileSelected"
+    />
     <UAlert
       v-if="error"
       color="error"
       variant="subtle"
       :description="error"
-      class="sm:col-span-2"
     />
   </div>
 </template>

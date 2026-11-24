@@ -19,7 +19,7 @@ const items = computed(() => section.value?.tabs.map(tab => ({ ...tab, active: t
       :items="items"
       :aria-label="section.label"
       variant="pill"
-      :ui="section.id === 'operacao' ? { list: 'flex w-full gap-1 sm:w-max sm:gap-2', item: 'flex-1 sm:flex-none', link: 'min-h-11 justify-center rounded-full border border-default px-2 text-xs sm:px-4 sm:text-sm', linkLeadingIcon: 'hidden size-4 sm:block' } : { list: 'w-max gap-2', link: 'min-h-11 rounded-full border border-default px-4', linkLeadingIcon: 'size-4' }"
+      :ui="section.id === 'operacao' ? { list: 'flex w-max gap-1 sm:gap-2', item: 'flex-none', link: 'min-h-11 justify-center rounded-full border border-default px-2 text-xs sm:px-4 sm:text-sm', linkLabel: 'overflow-visible text-clip whitespace-nowrap', linkLeadingIcon: 'hidden size-4 sm:block' } : { list: 'w-max gap-2', link: 'min-h-11 rounded-full border border-default px-4', linkLeadingIcon: 'size-4' }"
     />
   </div>
 </template>

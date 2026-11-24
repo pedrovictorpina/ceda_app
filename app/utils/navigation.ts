@@ -12,6 +12,11 @@ export const BOTTOM_NAV_ROUTES: Record<BottomNavProfile, readonly string[]> = {
 
 export const RECENT_NAVIGATION_LIMIT = 4
 
+export function isOperationTabTransition(from: string, to: string) {
+  const tabs = ['/operacao', '/operacao/estoque', '/operacao/financeiro', '/operacao/relatorios']
+  return tabs.includes(from) && tabs.includes(to) && from !== to
+}
+
 /** Turmas é uma ferramenta de gestão, ainda que sua URL também sirva aos professores. */
 export function isAdministrationPath(path: string) {
   return ['/admin', '/operacao', '/sementinhas/turmas', '/design-system'].some(to => routeMatches(path, to))

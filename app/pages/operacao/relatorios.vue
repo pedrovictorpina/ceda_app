@@ -100,6 +100,11 @@ const loading = ref(true)
 const reportComplete = ref(false)
 const exporting = ref(false)
 const feedback = ref('')
+const filtersOpen = ref(false)
+const showAllBestSellers = ref(false)
+const showAllLowStock = ref(false)
+const showAllExpiringBatches = ref(false)
+const ordersModalOpen = ref(false)
 const reportPanel = ref<HTMLElement | null>(null)
 const pageCount = computed(() => Math.max(1, Math.ceil(orders.value.length / pageSize)))
 const paginatedOrders = computed(() => orders.value.slice((ordersPage.value - 1) * pageSize, ordersPage.value * pageSize))
@@ -178,7 +183,7 @@ const bestSellers = computed(() => {
       rows.set(item.product_id, row)
     }
   }
-  return [...rows.values()].sort((a, b) => b.quantity - a.quantity).slice(0, 6)
+  return [...rows.values()].sort((a, b) => b.quantity - a.quantity)
 })
 
 const lowStock = computed(() => products.value.filter(product => product.active && Number(product.stock_available) <= 5).sort((a, b) => Number(a.stock_available) - Number(b.stock_available)))
@@ -431,117 +436,137 @@ watch(selectedCashDayId, () => {
       icon="i-lucide-chart-no-axes-combined"
     />
 
-    <BrandLoader
-      v-if="loading"
-      class="my-5"
-      label="Carregando relatórios…"
-    />
-
-    <section class="rounded-2xl border border-default bg-elevated/30 p-4 shadow-sm sm:p-5">
-      <div class="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
-        <div>
-          <h2 class="text-lg font-bold">
-            O que você quer consultar?
-          </h2>
-          <p class="mt-1 text-sm text-muted">
-            Escolha um período ou consulte o fechamento de um caixa.
-          </p>
-          <div
-            v-if="!cashDay"
-            class="mt-3 flex flex-wrap gap-2"
-          >
-            <UButton
-              v-for="preset in presets"
-              :key="preset.value"
-              :label="preset.label"
-              :color="selectedPreset === preset.value ? 'primary' : 'neutral'"
-              :variant="selectedPreset === preset.value ? 'solid' : 'outline'"
-              class="min-h-11"
-              @click="setPreset(preset.value)"
-            />
-          </div>
-          <p class="mt-3 flex items-center gap-2 text-sm font-medium">
-            <UIcon
-              name="i-lucide-calendar-range"
-              class="size-4 text-primary"
-            />
-            {{ cashDay ? 'Caixa de' : 'Exibindo:' }} {{ rangeLabel }}
-          </p>
-        </div>
-        <div class="flex flex-wrap items-end gap-3">
-          <UFormField
-            v-if="!cashDay && selectedPreset === 'custom'"
-            label="Data inicial"
-          >
-            <AppDatePicker v-model="startDate" />
-          </UFormField>
-          <UFormField
-            v-if="!cashDay && selectedPreset === 'custom'"
-            label="Data final"
-          >
-            <AppDatePicker v-model="endDate" />
-          </UFormField>
-          <UButton
-            v-if="!cashDay && selectedPreset === 'custom'"
-            label="Aplicar"
-            icon="i-lucide-filter"
-            :loading="loading"
-            @click="loadReport"
-          />
-          <UButton
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-refresh-cw"
-            class="min-h-11 min-w-11 justify-center"
-            :loading="loading"
-            aria-label="Atualizar relatório"
-            @click="loadReport"
-          />
-        </div>
-      </div>
-      <div
-        v-if="recentDays.length || cashDay"
-        class="mt-4 border-t border-default pt-3"
-      >
-        <UButton
-          label="Consultar um caixa encerrado"
-          color="neutral"
-          variant="ghost"
-          class="min-h-11"
-          :aria-expanded="showCashDays"
-          @click="showCashDays = !showCashDays"
-        />
-        <p
-          v-if="showCashDays"
-          class="mb-3 text-sm text-muted"
-        >
-          Cada opção mostra os pedidos de um caixa específico. São exibidos os oito fechamentos mais recentes.
-        </p>
-        <div
-          v-if="showCashDays"
-          class="flex flex-wrap gap-2"
-        >
-          <UButton
-            v-for="day in recentDays"
-            :key="day.id"
-            :to="`/operacao/relatorios?dia=${day.id}`"
-            :label="day.started_at ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }).format(new Date(day.started_at)) : `${day.business_date.split('-').reverse().join('/')} · não iniciada`"
-            :color="selectedCashDayId === day.id ? 'primary' : 'neutral'"
-            :variant="selectedCashDayId === day.id ? 'solid' : 'outline'"
-            class="min-h-11"
-          />
-        </div>
-      </div>
+    <div class="flex flex-wrap items-center gap-3">
       <UButton
-        v-if="selectedCashDayId"
-        to="/operacao/relatorios"
-        label="Voltar aos períodos"
-        icon="i-lucide-arrow-left"
+        label="Filtros"
+        icon="i-lucide-sliders-horizontal"
         color="neutral"
         variant="outline"
-        class="mt-3 min-h-11"
+        @click="filtersOpen = true"
       />
-    </section>
+      <span class="text-sm text-muted">{{ rangeLabel }}</span>
+    </div>
+    <UModal
+      v-model:open="filtersOpen"
+      title="Filtros do relatório"
+      description="Selecione um caixa ou período de análise."
+      :ui="{ content: 'max-h-[calc(100dvh-2rem)]', body: 'overflow-y-auto' }"
+    >
+      <template #body>
+        <UAlert
+          v-if="feedback"
+          class="mb-4"
+          color="warning"
+          variant="subtle"
+          :description="feedback"
+        />
+        <section class="rounded-2xl border border-default bg-elevated/30 p-4 shadow-sm sm:p-5">
+          <div class="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
+            <div>
+              <h2 class="text-lg font-bold">
+                O que você quer consultar?
+              </h2>
+              <p class="mt-1 text-sm text-muted">
+                Escolha um período ou consulte o fechamento de um caixa.
+              </p>
+              <div
+                v-if="!cashDay"
+                class="mt-3 flex flex-wrap gap-2"
+              >
+                <UButton
+                  v-for="preset in presets"
+                  :key="preset.value"
+                  :label="preset.label"
+                  :color="selectedPreset === preset.value ? 'primary' : 'neutral'"
+                  :variant="selectedPreset === preset.value ? 'solid' : 'outline'"
+                  class="min-h-11"
+                  @click="setPreset(preset.value)"
+                />
+              </div>
+              <p class="mt-3 flex items-center gap-2 text-sm font-medium">
+                <UIcon
+                  name="i-lucide-calendar-range"
+                  class="size-4 text-primary"
+                />
+                {{ cashDay ? 'Caixa de' : 'Exibindo:' }} {{ rangeLabel }}
+              </p>
+            </div>
+            <div class="flex flex-wrap items-end gap-3">
+              <UFormField
+                v-if="!cashDay && selectedPreset === 'custom'"
+                label="Data inicial"
+              >
+                <AppDatePicker v-model="startDate" />
+              </UFormField>
+              <UFormField
+                v-if="!cashDay && selectedPreset === 'custom'"
+                label="Data final"
+              >
+                <AppDatePicker v-model="endDate" />
+              </UFormField>
+              <UButton
+                v-if="!cashDay && selectedPreset === 'custom'"
+                label="Aplicar"
+                icon="i-lucide-filter"
+                :loading="loading"
+                @click="loadReport"
+              />
+              <UButton
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-refresh-cw"
+                class="min-h-11 min-w-11 justify-center"
+                :loading="loading"
+                aria-label="Atualizar relatório"
+                @click="loadReport"
+              />
+            </div>
+          </div>
+          <div
+            v-if="recentDays.length || cashDay"
+            class="mt-4 border-t border-default pt-3"
+          >
+            <UButton
+              label="Consultar um caixa encerrado"
+              color="neutral"
+              variant="ghost"
+              class="min-h-11"
+              :aria-expanded="showCashDays"
+              @click="showCashDays = !showCashDays"
+            />
+            <p
+              v-if="showCashDays"
+              class="mb-3 text-sm text-muted"
+            >
+              Cada opção mostra os pedidos de um caixa específico. São exibidos os oito fechamentos mais recentes.
+            </p>
+            <div
+              v-if="showCashDays"
+              class="flex flex-wrap gap-2"
+            >
+              <UButton
+                v-for="day in recentDays"
+                :key="day.id"
+                :to="`/operacao/relatorios?dia=${day.id}`"
+                :label="day.started_at ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }).format(new Date(day.started_at)) : `${day.business_date.split('-').reverse().join('/')} · não iniciada`"
+                :color="selectedCashDayId === day.id ? 'primary' : 'neutral'"
+                :variant="selectedCashDayId === day.id ? 'solid' : 'outline'"
+                class="min-h-11"
+              />
+            </div>
+          </div>
+          <UButton
+            v-if="selectedCashDayId"
+            to="/operacao/relatorios"
+            label="Voltar aos períodos"
+            icon="i-lucide-arrow-left"
+            color="neutral"
+            variant="outline"
+            class="mt-3 min-h-11"
+          />
+        </section>
+      </template>
+    </UModal>
 
     <UAlert
       v-if="feedback"
@@ -557,6 +582,11 @@ watch(selectedCashDayId, () => {
       color="neutral"
       variant="subtle"
       description="Os lançamentos financeiros são agrupados por data e estão disponíveis em Outros períodos."
+    />
+    <USkeleton
+      v-if="loading"
+      class="mt-6 h-48 rounded-2xl"
+      aria-label="Carregando resumo financeiro"
     />
     <StoreFinanceLedger
       v-if="!loading && reportComplete && !cashDay && appliedDates.start && appliedDates.end"
@@ -577,7 +607,7 @@ watch(selectedCashDayId, () => {
           </p>
           <h2
             id="store-report-title"
-            class="mt-1 text-2xl font-bold"
+            class="mt-1 text-lg font-bold sm:text-2xl"
           >
             {{ cashDay ? 'Indicadores do caixa' : 'Indicadores do período' }}
           </h2>
@@ -765,7 +795,7 @@ watch(selectedCashDayId, () => {
               class="space-y-4"
             >
               <div
-                v-for="(item, index) in bestSellers"
+                v-for="(item, index) in (showAllBestSellers ? bestSellers : bestSellers.slice(0, 5))"
                 :key="item.name"
                 class="flex items-center gap-3"
               >
@@ -777,6 +807,13 @@ watch(selectedCashDayId, () => {
                   </p>
                 </div>
               </div>
+              <UButton
+                v-if="bestSellers.length > 5"
+                color="neutral"
+                variant="outline"
+                :label="showAllBestSellers ? 'Ver menos' : 'Ver mais'"
+                @click="showAllBestSellers = !showAllBestSellers"
+              />
             </div>
             <p
               v-else
@@ -808,7 +845,7 @@ watch(selectedCashDayId, () => {
               class="space-y-3"
             >
               <div
-                v-for="product in lowStock"
+                v-for="product in (showAllLowStock ? lowStock : lowStock.slice(0, 5))"
                 :key="product.id"
                 class="flex items-center justify-between rounded-lg bg-elevated/60 p-3"
               >
@@ -818,6 +855,13 @@ watch(selectedCashDayId, () => {
                   :label="`${formatQuantity(product.stock_available)} un.`"
                 />
               </div>
+              <UButton
+                v-if="lowStock.length > 5"
+                color="neutral"
+                variant="outline"
+                :label="showAllLowStock ? 'Ver menos' : 'Ver mais'"
+                @click="showAllLowStock = !showAllLowStock"
+              />
             </div>
             <p
               v-else
@@ -846,7 +890,7 @@ watch(selectedCashDayId, () => {
               class="space-y-3"
             >
               <div
-                v-for="batch in expiringBatches"
+                v-for="batch in (showAllExpiringBatches ? expiringBatches : expiringBatches.slice(0, 5))"
                 :key="batch.id"
                 class="flex items-center justify-between gap-3 rounded-lg bg-elevated/60 p-3"
               >
@@ -862,6 +906,13 @@ watch(selectedCashDayId, () => {
                   :label="new Intl.DateTimeFormat('pt-BR').format(new Date(`${batch.expires_on}T00:00:00`))"
                 />
               </div>
+              <UButton
+                v-if="expiringBatches.length > 5"
+                color="neutral"
+                variant="outline"
+                :label="showAllExpiringBatches ? 'Ver menos' : 'Ver mais'"
+                @click="showAllExpiringBatches = !showAllExpiringBatches"
+              />
             </div>
             <p
               v-else
@@ -878,16 +929,16 @@ watch(selectedCashDayId, () => {
               <h3 class="font-semibold">
                 Pedidos do período
               </h3><p class="mt-1 text-sm text-muted">
-                {{ orders.length }} pedido(s) no total. Mostrando {{ pageStart }} a {{ pageEnd }}.
+                {{ orders.length }} pedido(s) no total. Mostrando os mais recentes.
               </p>
             </div>
           </template>
           <div
             v-if="orders.length"
-            class="space-y-3 md:hidden"
+            class="space-y-3"
           >
             <article
-              v-for="order in paginatedOrders"
+              v-for="order in orders.slice(0, 5)"
               :key="order.id"
               class="rounded-xl border border-default p-3"
             >
@@ -909,62 +960,13 @@ watch(selectedCashDayId, () => {
                 {{ formatMoney(order.total_amount) }}
               </p>
             </article>
-          </div>
-          <UTable
-            v-if="orders.length"
-            class="hidden md:block"
-            :data="paginatedOrders"
-            :columns="orderColumns"
-            :get-row-id="order => order.id"
-            caption="Pedidos do período"
-            :ui="{ base: 'min-w-[48rem]', caption: 'sr-only', th: 'px-2 py-3 text-xs uppercase tracking-wide', td: 'px-2 py-3' }"
-          >
-            <template #order_number-cell="{ row }">
-              <span class="font-semibold">{{ displayOrderNumber(row.original) }}</span>
-            </template>
-            <template #created_at-cell="{ row }">
-              {{ formatDateTime(row.original.created_at) }}
-            </template>
-            <template #store_order_items-cell="{ row }">
-              <span class="block max-w-72 whitespace-normal">{{ row.original.store_order_items.map(item => `${relationName(item.product) || 'Produto'} × ${formatQuantity(item.quantity)}`).join(', ') }}</span>
-            </template>
-            <template #status-cell="{ row }">
-              <UBadge
-                :color="statusColors[row.original.status]"
-                variant="subtle"
-                :label="statusLabels[row.original.status]"
-              />
-            </template>
-            <template #total_amount-cell="{ row }">
-              <span class="font-semibold">{{ formatMoney(row.original.total_amount) }}</span>
-            </template>
-          </UTable>
-          <div
-            v-if="orders.length > pageSize"
-            class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-default pt-4"
-            aria-label="Paginação dos pedidos"
-          >
-            <p class="text-sm text-muted">
-              Página {{ ordersPage }} de {{ pageCount }}
-            </p>
-            <div class="flex gap-2">
+            <div class="flex justify-end">
               <UButton
-                label="Anterior"
-                icon="i-lucide-chevron-left"
+                v-if="orders.length > 5"
+                label="Ver mais"
                 color="neutral"
                 variant="outline"
-                class="min-h-11"
-                :disabled="ordersPage <= 1"
-                @click="ordersPage--"
-              />
-              <UButton
-                label="Próxima"
-                trailing-icon="i-lucide-chevron-right"
-                color="neutral"
-                variant="outline"
-                class="min-h-11"
-                :disabled="ordersPage >= pageCount"
-                @click="ordersPage++"
+                @click="ordersPage = 1; ordersModalOpen = true"
               />
             </div>
           </div>
@@ -975,6 +977,101 @@ watch(selectedCashDayId, () => {
             Nenhum pedido encontrado neste período.
           </p>
         </UCard>
+        <UModal
+          v-model:open="ordersModalOpen"
+          title="Pedidos do período"
+          description="Pedidos encontrados no período selecionado."
+          :ui="{ content: 'left-0 top-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 rounded-none sm:left-1/2 sm:top-1/2 sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-2rem)] sm:max-w-4xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg', body: 'overflow-y-auto' }"
+        >
+          <template #body>
+            <div
+              v-if="orders.length"
+              class="space-y-3 md:hidden"
+            >
+              <article
+                v-for="order in paginatedOrders"
+                :key="order.id"
+                class="rounded-xl border border-default p-3"
+              >
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <strong>Pedido {{ displayOrderNumber(order) }}</strong>
+                  <UBadge
+                    :color="statusColors[order.status]"
+                    variant="subtle"
+                    :label="statusLabels[order.status]"
+                  />
+                </div>
+                <p class="mt-1 text-sm text-muted">
+                  {{ formatDateTime(order.created_at) }}
+                </p>
+                <p class="mt-2 text-sm">
+                  {{ order.store_order_items.map(item => `${relationName(item.product) || 'Produto'} × ${formatQuantity(item.quantity)}`).join(', ') }}
+                </p>
+                <p class="mt-2 font-semibold">
+                  {{ formatMoney(order.total_amount) }}
+                </p>
+              </article>
+            </div>
+            <UTable
+              v-if="orders.length"
+              class="hidden md:block"
+              :data="paginatedOrders"
+              :columns="orderColumns"
+              :get-row-id="order => order.id"
+              caption="Pedidos do período"
+              :ui="{ base: 'min-w-[48rem]', caption: 'sr-only', th: 'px-2 py-3 text-xs uppercase tracking-wide', td: 'px-2 py-3' }"
+            >
+              <template #order_number-cell="{ row }">
+                <span class="font-semibold">{{ displayOrderNumber(row.original) }}</span>
+              </template>
+              <template #created_at-cell="{ row }">
+                {{ formatDateTime(row.original.created_at) }}
+              </template>
+              <template #store_order_items-cell="{ row }">
+                <span class="block max-w-72 whitespace-normal">{{ row.original.store_order_items.map(item => `${relationName(item.product) || 'Produto'} × ${formatQuantity(item.quantity)}`).join(', ') }}</span>
+              </template>
+              <template #status-cell="{ row }">
+                <UBadge
+                  :color="statusColors[row.original.status]"
+                  variant="subtle"
+                  :label="statusLabels[row.original.status]"
+                />
+              </template>
+              <template #total_amount-cell="{ row }">
+                <span class="font-semibold">{{ formatMoney(row.original.total_amount) }}</span>
+              </template>
+            </UTable>
+            <div
+              v-if="orders.length > pageSize"
+              class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-default pt-4"
+              aria-label="Paginação dos pedidos"
+            >
+              <p class="text-sm text-muted">
+                Página {{ ordersPage }} de {{ pageCount }} · {{ pageStart }} a {{ pageEnd }} de {{ orders.length }}
+              </p>
+              <div class="flex gap-2">
+                <UButton
+                  label="Anterior"
+                  icon="i-lucide-chevron-left"
+                  color="neutral"
+                  variant="outline"
+                  class="min-h-11"
+                  :disabled="ordersPage <= 1"
+                  @click="ordersPage--"
+                />
+                <UButton
+                  label="Próxima"
+                  trailing-icon="i-lucide-chevron-right"
+                  color="neutral"
+                  variant="outline"
+                  class="min-h-11"
+                  :disabled="ordersPage >= pageCount"
+                  @click="ordersPage++"
+                />
+              </div>
+            </div>
+          </template>
+        </UModal>
       </template>
     </section>
   </div>

@@ -5,7 +5,7 @@ import { Share } from '@capacitor/share'
 import { financePaymentLabels, financeSummary, financeUtcSearchBounds, saleDate, type FinanceEntry, type FinanceKind, type FinanceSale } from '~/utils/storeFinance'
 import { randomId } from '~/utils/randomId'
 
-const props = defineProps<{ start: string, end: string, cashDayId?: string }>()
+const props = withDefaults(defineProps<{ start: string, end: string, cashDayId?: string, mode?: 'summary' | 'entries' }>(), { mode: 'summary' })
 const auth = useAuthStore()
 const sales = ref<FinanceSale[]>([])
 const entries = ref<FinanceEntry[]>([])
@@ -18,6 +18,7 @@ const entryDate = ref(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_
 const description = ref('')
 const amount = ref<number | null>(null)
 const pendingVoid = ref<string | null>(null)
+const editingEntry = ref<string | null>(null)
 const showSales = ref(false)
 const showEntryForm = ref(false)
 const showEntries = ref(false)
@@ -80,6 +81,24 @@ async function load() {
 async function saveEntry() {
   const { $supabase } = useNuxtApp()
   if (!$supabase || !auth.profile || saving.value) return
+  if (editingEntry.value) {
+    if (!description.value.trim() || !entryDate.value || !amount.value || amount.value <= 0) return
+    saving.value = true
+    error.value = ''
+    const { data, error: updateError } = await $supabase.from('store_financial_entries').update({ entry_date: entryDate.value, kind: kind.value, description: description.value.trim(), amount: amount.value }).eq('id', editingEntry.value).select('id').maybeSingle()
+    saving.value = false
+    if (updateError || !data) {
+      error.value = 'Não foi possível atualizar o lançamento. Confira os dados e tente novamente.'
+      return
+    }
+    showEntryForm.value = false
+    editingEntry.value = null
+    description.value = ''
+    amount.value = null
+    notice.value = 'Lançamento atualizado.'
+    await load()
+    return
+  }
   if (!pendingEntry.value) {
     if (!description.value.trim() || !entryDate.value || !amount.value || amount.value <= 0) return
     pendingEntry.value = { id: randomId(), entry_date: entryDate.value, kind: kind.value, description: description.value.trim(), amount: amount.value, created_by: auth.profile.id }
@@ -114,20 +133,40 @@ async function saveEntry() {
     notice.value = entryDate.value < props.start || entryDate.value > props.end
       ? 'Lançamento registrado fora do período exibido. Altere o período para consultá-lo.'
       : 'Lançamento registrado.'
+    showEntryForm.value = false
     await load()
   }
 }
 
-async function voidEntry(id: string) {
+function editEntry(entry: FinanceEntry) {
+  if (pendingEntry.value) return
+  editingEntry.value = entry.id
+  kind.value = entry.kind
+  entryDate.value = entry.entry_date
+  description.value = entry.description
+  amount.value = Number(entry.amount)
+  error.value = ''
+  showEntryForm.value = true
+}
+
+function newEntry() {
+  editingEntry.value = null
+  description.value = ''
+  amount.value = null
+  showEntryForm.value = true
+}
+
+async function deleteEntry(id: string) {
   const { $supabase } = useNuxtApp()
   if (!$supabase || saving.value) return
   saving.value = true
-  const { data, error: voidError } = await $supabase.from('store_financial_entries').update({ voided_at: new Date().toISOString() }).eq('id', id).is('voided_at', null).select('id').maybeSingle()
+  error.value = ''
+  const { data, error: deleteError } = await $supabase.from('store_financial_entries').delete().eq('id', id).select('id').maybeSingle()
   saving.value = false
   pendingVoid.value = null
-  if (voidError || !data) error.value = 'Não foi possível estornar. Atualize e tente novamente.'
+  if (deleteError || !data) error.value = 'Não foi possível excluir. Atualize e tente novamente.'
   else {
-    notice.value = 'Lançamento estornado; o histórico foi preservado.'
+    notice.value = 'Lançamento excluído definitivamente.'
     await load()
   }
 }
@@ -257,221 +296,274 @@ watch(() => [props.start, props.end, props.cashDayId], () => {
     class="mt-6 rounded-2xl border border-default bg-default p-4 sm:p-5"
     aria-labelledby="finance-title"
   >
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h2
-          id="finance-title"
-          class="text-xl font-bold"
-        >
-          Resumo financeiro
-        </h2><p class="mt-1 text-sm text-muted">
-          {{ cashDayId ? 'Vendas deste caixa. Doações e saídas correspondem à data do caixa.' : 'Vendas confirmadas, doações e saídas no período escolhido.' }}
-        </p>
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <UButton
-          label="Planilha financeira"
-          icon="i-lucide-sheet"
-          class="min-h-11"
-          :disabled="!ready || loading"
-          @click="exportCsv"
-        />
-        <UButton
-          label="Imagem do financeiro"
-          icon="i-lucide-image-down"
-          color="neutral"
-          variant="outline"
-          class="min-h-11"
-          :disabled="!ready || loading"
-          @click="exportImage"
-        />
-      </div>
-    </div>
-    <UAlert
-      v-if="error"
-      color="error"
-      variant="subtle"
-      class="mt-4"
-      :description="error"
-    />
-    <UAlert
-      v-if="notice"
-      color="success"
-      variant="subtle"
-      class="mt-4"
-      :description="notice"
-    />
-    <div
-      v-if="ready"
-      class="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4"
-    >
-      <div
-        v-for="item in [{ label: 'Vendas', value: summary.salesCents }, { label: 'Doações', value: summary.donationCents }, { label: 'Saídas', value: summary.expenseCents }, { label: 'Saldo do período', value: summary.balanceCents }]"
-        :key="item.label"
-        class="rounded-xl bg-elevated p-3"
-      >
-        <p class="text-xs text-muted">
-          {{ item.label }}
-        </p><p class="mt-1 font-bold">
-          {{ money(item.value) }}
-        </p>
-      </div>
-    </div>
-    <p class="mt-3 text-xs text-muted">
-      Saldo = vendas confirmadas + doações − saídas. Não inclui saldo anterior. Compras de estoque devem ser registradas como saída. As vendas usam a data de confirmação em São Paulo; doações e saídas usam a data informada.
-    </p>
-    <div
-      v-if="ready && rows.length"
-      class="mt-4"
-    >
-      <UButton
-        :label="showSales ? 'Ocultar vendas por data' : 'Ver vendas por data'"
-        color="neutral"
-        variant="outline"
-        class="min-h-11"
-        :aria-expanded="showSales"
-        @click="showSales = !showSales"
-      />
-      <div
-        v-if="showSales"
-        class="mt-3 space-y-2"
-      >
-        <div
-          v-for="row in rows"
-          :key="`${row.date}-${row.method}`"
-          class="rounded-xl border border-default p-3 text-sm"
-        >
-          <p class="font-medium">
-            {{ displayDate(row.date) }} · {{ financePaymentLabels[row.method] || row.method }} · {{ money(row.cents) }}
-          </p>
-          <p
-            v-if="row.dayTotal !== null"
-            class="mt-1 text-muted"
-          >
-            Total do dia: {{ money(row.dayTotal) }}
-          </p>
-        </div>
-      </div>
-    </div>
-    <UAlert
-      v-if="pendingEntry"
-      class="mt-4"
-      color="warning"
-      variant="subtle"
-      description="Há um lançamento aguardando confirmação. Tente novamente antes de registrar outro."
-    />
-    <UButton
-      class="mt-4 min-h-11"
-      :label="showEntryForm ? 'Fechar formulário' : 'Registrar saída ou doação'"
-      :icon="showEntryForm ? 'i-lucide-x' : 'i-lucide-plus'"
-      color="neutral"
-      variant="outline"
-      :aria-expanded="showEntryForm || Boolean(pendingEntry)"
-      @click="showEntryForm = !showEntryForm"
-    />
-    <UForm
-      v-if="showEntryForm || pendingEntry"
-      :state="{ kind, entryDate, description, amount }"
-      class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
-      @submit="saveEntry"
-    >
-      <UFormField label="Tipo">
-        <USelect
-          v-model="kind"
-          :items="[{ label: 'Saída', value: 'expense' }, { label: 'Doação', value: 'donation' }]"
-          :disabled="Boolean(pendingEntry)"
-          class="w-full"
-        />
-      </UFormField>
-      <UFormField label="Data">
-        <UInput
-          v-model="entryDate"
-          type="date"
-          :disabled="Boolean(pendingEntry)"
-          required
-          class="w-full"
-        />
-      </UFormField>
-      <UFormField :label="kind === 'expense' ? 'Descrição da saída' : 'Nome / doação'">
-        <UInput
-          v-model="description"
-          maxlength="160"
-          :disabled="Boolean(pendingEntry)"
-          required
-          class="w-full"
-        />
-      </UFormField>
-      <UFormField label="Valor (R$)">
-        <UInput
-          v-model.number="amount"
-          type="number"
-          min="0.01"
-          step="0.01"
-          :disabled="Boolean(pendingEntry)"
-          required
-          class="w-full"
-        />
-      </UFormField>
-      <UButton
-        type="submit"
-        :label="pendingEntry ? 'Confirmar tentativa' : kind === 'expense' ? 'Registrar saída' : 'Registrar doação'"
-        icon="i-lucide-plus"
-        class="min-h-11"
-        :loading="saving"
-        :disabled="!ready || loading"
-      />
-    </UForm>
-    <div
-      v-if="ready && entries.length"
-      class="mt-5 space-y-2"
-    >
-      <UButton
-        :label="`${showEntries ? 'Ocultar' : 'Ver'} lançamentos do período (${entries.length})`"
-        color="neutral"
-        variant="ghost"
-        class="min-h-11"
-        :aria-expanded="showEntries"
-        @click="showEntries = !showEntries"
-      />
-      <article
-        v-for="entry in (showEntries ? entries : [])"
-        :key="entry.id"
-        class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-default p-3"
-      >
+    <template v-if="mode === 'summary'">
+      <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p class="font-medium">
-            {{ entry.kind === 'expense' ? 'Saída' : 'Doação' }} · {{ entry.description }}
-          </p><p class="text-sm text-muted">
-            {{ displayDate(entry.entry_date) }} · {{ money(Math.round(Number(entry.amount) * 100)) }}{{ entry.voided_at ? ' · Estornado' : '' }}
+          <h2
+            id="finance-title"
+            class="text-xl font-bold"
+          >
+            Resumo financeiro
+          </h2><p class="mt-1 text-sm text-muted">
+            {{ cashDayId ? 'Vendas deste caixa. Doações e saídas correspondem à data do caixa.' : 'Vendas confirmadas, doações e saídas no período escolhido.' }}
           </p>
         </div>
-        <UButton
-          v-if="!entry.voided_at && pendingVoid !== entry.id"
-          label="Estornar"
-          color="neutral"
-          variant="outline"
-          class="min-h-11"
-          @click="pendingVoid = entry.id"
-        />
-        <div
-          v-if="pendingVoid === entry.id"
-          class="flex flex-wrap gap-2"
-        >
+        <div class="flex flex-wrap gap-2">
           <UButton
-            label="Confirmar estorno"
-            color="error"
+            label="Planilha financeira"
+            icon="i-lucide-sheet"
             class="min-h-11"
-            :loading="saving"
-            @click="voidEntry(entry.id)"
-          /><UButton
-            label="Voltar"
+            :disabled="!ready || loading"
+            @click="exportCsv"
+          />
+          <UButton
+            label="Imagem do financeiro"
+            icon="i-lucide-image-down"
             color="neutral"
-            variant="ghost"
+            variant="outline"
             class="min-h-11"
-            @click="pendingVoid = null"
+            :disabled="!ready || loading"
+            @click="exportImage"
           />
         </div>
-      </article>
-    </div>
+      </div>
+      <UAlert
+        v-if="error"
+        color="error"
+        variant="subtle"
+        class="mt-4"
+        :description="error"
+      />
+      <UAlert
+        v-if="notice"
+        color="success"
+        variant="subtle"
+        class="mt-4"
+        :description="notice"
+      />
+      <div
+        v-if="ready"
+        class="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4"
+      >
+        <div
+          v-for="item in [{ label: 'Vendas', value: summary.salesCents }, { label: 'Doações', value: summary.donationCents }, { label: 'Saídas', value: summary.expenseCents }, { label: 'Saldo do período', value: summary.balanceCents }]"
+          :key="item.label"
+          class="rounded-xl bg-elevated p-3"
+        >
+          <p class="text-xs text-muted">
+            {{ item.label }}
+          </p><p class="mt-1 font-bold">
+            {{ money(item.value) }}
+          </p>
+        </div>
+      </div>
+      <p class="mt-3 text-xs text-muted">
+        Saldo = vendas confirmadas + doações − saídas. Não inclui saldo anterior. Compras de estoque devem ser registradas como saída. As vendas usam a data de confirmação em São Paulo; doações e saídas usam a data informada.
+      </p>
+      <div
+        v-if="ready && rows.length"
+        class="mt-4"
+      >
+        <UButton
+          :label="showSales ? 'Ocultar vendas por data' : 'Ver vendas por data'"
+          color="neutral"
+          variant="outline"
+          class="min-h-11"
+          :aria-expanded="showSales"
+          @click="showSales = !showSales"
+        />
+        <div
+          v-if="showSales"
+          class="mt-3 space-y-2"
+        >
+          <div
+            v-for="row in rows"
+            :key="`${row.date}-${row.method}`"
+            class="rounded-xl border border-default p-3 text-sm"
+          >
+            <p class="font-medium">
+              {{ displayDate(row.date) }} · {{ financePaymentLabels[row.method] || row.method }} · {{ money(row.cents) }}
+            </p>
+            <p
+              v-if="row.dayTotal !== null"
+              class="mt-1 text-muted"
+            >
+              Total do dia: {{ money(row.dayTotal) }}
+            </p>
+          </div>
+        </div>
+      </div>
+    </template>
+    <template v-else>
+      <h2
+        id="finance-title"
+        class="text-lg font-semibold"
+      >
+        Saídas e doações
+      </h2>
+      <UAlert
+        v-if="error"
+        color="error"
+        variant="subtle"
+        class="mt-4"
+        :description="error"
+      />
+      <UAlert
+        v-if="notice"
+        color="success"
+        variant="subtle"
+        class="mt-4"
+        :description="notice"
+      />
+      <UAlert
+        v-if="pendingEntry"
+        class="mt-4"
+        color="warning"
+        variant="subtle"
+        description="Há um lançamento aguardando confirmação. Tente novamente antes de registrar outro."
+      />
+      <UButton
+        class="mt-4 min-h-11"
+        label="Registrar saída ou doação"
+        icon="i-lucide-plus"
+        color="neutral"
+        variant="outline"
+        @click="newEntry"
+      />
+      <UModal
+        v-model:open="showEntryForm"
+        :title="editingEntry ? 'Editar lançamento' : 'Saída ou doação'"
+        description="Informe os dados do lançamento."
+        :dismissible="!saving"
+        :close="!saving"
+        :ui="{ content: 'max-h-[calc(100dvh-2rem)]', body: 'overflow-y-auto' }"
+      >
+        <template #body>
+          <UAlert
+            v-if="error"
+            color="error"
+            variant="subtle"
+            :description="error"
+          />
+          <UForm
+            :state="{ kind, entryDate, description, amount }"
+            class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+            @submit="saveEntry"
+          >
+            <UFormField label="Tipo">
+              <USelect
+                v-model="kind"
+                :items="[{ label: 'Saída', value: 'expense' }, { label: 'Doação', value: 'donation' }]"
+                :disabled="Boolean(pendingEntry)"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Data">
+              <UInput
+                v-model="entryDate"
+                type="date"
+                :disabled="Boolean(pendingEntry)"
+                required
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField :label="kind === 'expense' ? 'Descrição da saída' : 'Nome / doação'">
+              <UInput
+                v-model="description"
+                maxlength="160"
+                :disabled="Boolean(pendingEntry)"
+                required
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Valor (R$)">
+              <UInput
+                v-model.number="amount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                :disabled="Boolean(pendingEntry)"
+                required
+                class="w-full"
+              />
+            </UFormField>
+            <UButton
+              type="submit"
+              :label="editingEntry ? 'Salvar alterações' : pendingEntry ? 'Confirmar tentativa' : kind === 'expense' ? 'Registrar saída' : 'Registrar doação'"
+              icon="i-lucide-plus"
+              class="min-h-11"
+              :loading="saving"
+              :disabled="!ready || loading"
+            />
+          </UForm>
+        </template>
+      </UModal>
+      <div
+        v-if="ready && entries.length"
+        class="mt-5 space-y-2"
+      >
+        <UButton
+          :label="`${showEntries ? 'Ocultar' : 'Ver'} lançamentos do período (${entries.length})`"
+          color="neutral"
+          variant="ghost"
+          class="min-h-11"
+          :aria-expanded="showEntries"
+          @click="showEntries = !showEntries"
+        />
+        <article
+          v-for="entry in (showEntries ? entries : [])"
+          :key="entry.id"
+          class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-default p-3"
+        >
+          <div>
+            <p class="font-medium">
+              {{ entry.kind === 'expense' ? 'Saída' : 'Doação' }} · {{ entry.description }}
+            </p><p class="text-sm text-muted">
+              {{ displayDate(entry.entry_date) }} · {{ money(Math.round(Number(entry.amount) * 100)) }}{{ entry.voided_at ? ' · Estornado' : '' }}
+            </p>
+          </div>
+          <div
+            v-if="pendingVoid !== entry.id"
+            class="flex flex-wrap justify-end gap-2"
+          >
+            <UButton
+              label="Editar"
+              color="neutral"
+              variant="outline"
+              :disabled="Boolean(pendingEntry) || saving"
+              @click="editEntry(entry)"
+            />
+            <UButton
+              label="Excluir"
+              color="error"
+              variant="outline"
+              :disabled="saving"
+              @click="pendingVoid = entry.id"
+            />
+          </div>
+          <div
+            v-else
+            class="flex flex-wrap justify-end gap-2"
+          >
+            <p class="w-full text-sm text-error">
+              Excluir definitivamente este lançamento?
+            </p>
+            <UButton
+              label="Confirmar exclusão"
+              color="error"
+              :loading="saving"
+              @click="deleteEntry(entry.id)"
+            />
+            <UButton
+              label="Cancelar"
+              color="neutral"
+              variant="ghost"
+              :disabled="saving"
+              @click="pendingVoid = null"
+            />
+          </div>
+        </article>
+      </div>
+    </template>
   </section>
 </template>
