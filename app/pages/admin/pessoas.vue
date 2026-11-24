@@ -55,6 +55,7 @@ const pageSize = ref(10)
 const currentPage = ref(1)
 const expandedMemberId = ref<string | null>(null)
 const detailsOpen = ref(false)
+const filtersOpen = ref(false)
 const selectedMemberId = ref<string | null>(null)
 const members = ref<ProfileRow[]>([])
 const roleRows = ref<Array<{ user_id: string, role: SystemRole }>>([])
@@ -334,7 +335,7 @@ onMounted(loadPeople)
       color="primary"
       variant="subtle"
       title="Permissões administrativas protegidas"
-      description="Os papéis exibidos refletem o acesso atual. Alterações de permissões são processadas no servidor; a pessoa precisa renovar a sessão para receber o novo acesso."
+      description="As alterações de acesso passam a valer quando a pessoa renovar a sessão."
     />
 
     <UAlert
@@ -353,12 +354,12 @@ onMounted(loadPeople)
     >
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p class="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
+          <p class="text-xs font-semibold uppercase tracking-wide text-primary">
             Fila de análise
           </p>
           <h2
             id="requests-title"
-            class="mt-1 text-2xl font-bold"
+            class="mt-1 text-lg font-bold sm:text-2xl"
           >
             Solicitações de participação
           </h2>
@@ -451,12 +452,12 @@ onMounted(loadPeople)
     >
       <div class="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p class="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
+          <p class="text-xs font-semibold uppercase tracking-wide text-primary">
             Diretório interno
           </p>
           <h2
             id="members-title"
-            class="mt-1 text-2xl font-bold"
+            class="mt-1 text-lg font-bold sm:text-2xl"
           >
             Membros cadastrados
           </h2>
@@ -472,50 +473,75 @@ onMounted(loadPeople)
             color="neutral"
             variant="outline"
             icon="i-lucide-refresh-cw"
-            label="Atualizar"
+            aria-label="Atualizar pessoas"
             :loading="loading"
             @click="loadPeople"
           />
         </div>
       </div>
 
-      <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <USelect
-          v-model="roleFilter"
-          :items="roleFilterItems"
-          aria-label="Filtrar por papel"
-          class="w-full"
+      <div class="mt-3 flex justify-end">
+        <UButton
+          label="Filtros"
+          icon="i-lucide-sliders-horizontal"
+          color="neutral"
+          variant="outline"
+          @click="filtersOpen = true"
         />
-        <USelect
-          v-model="phoneFilter"
-          :items="phoneFilterItems"
-          aria-label="Filtrar por telefone"
-          class="w-full"
-        />
-        <USelect
-          v-model="sortOrder"
-          :items="sortItems"
-          aria-label="Ordenar pessoas"
-          class="w-full"
-        />
-        <div class="flex items-center gap-2">
-          <label
-            for="people-page-size"
-            class="shrink-0 text-sm text-muted"
-          >Por página</label>
-          <USelect
-            id="people-page-size"
-            v-model="pageSize"
-            :items="pageSizeItems"
-            aria-label="Pessoas por página"
-            class="w-full"
-          />
-        </div>
       </div>
+      <UModal
+        v-model:open="filtersOpen"
+        title="Filtros de pessoas"
+        description="Escolha os filtros e a ordenação da listagem."
+      >
+        <template #body>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <USelect
+              v-model="roleFilter"
+              :items="roleFilterItems"
+              aria-label="Filtrar por papel"
+              class="w-full"
+            />
+            <USelect
+              v-model="phoneFilter"
+              :items="phoneFilterItems"
+              aria-label="Filtrar por telefone"
+              class="w-full"
+            />
+            <USelect
+              v-model="sortOrder"
+              :items="sortItems"
+              aria-label="Ordenar pessoas"
+              class="w-full"
+            />
+            <div class="flex items-center gap-2">
+              <label
+                for="people-page-size"
+                class="shrink-0 text-sm text-muted"
+              >Por página</label>
+              <USelect
+                id="people-page-size"
+                v-model="pageSize"
+                :items="pageSizeItems"
+                aria-label="Pessoas por página"
+                class="w-full"
+              />
+            </div>
+          </div>
+        </template>
+        <template #footer>
+          <div class="flex w-full justify-end">
+            <UButton
+              label="Concluir"
+              @click="filtersOpen = false"
+            />
+          </div>
+        </template>
+      </UModal>
 
       <div
         v-if="loading"
-        class="mt-5 space-y-3"
+        class="mt-4 space-y-2"
       >
         <USkeleton
           v-for="index in 5"
@@ -525,20 +551,20 @@ onMounted(loadPeople)
       </div>
       <div
         v-else-if="filteredMembers.length"
-        class="mt-5 space-y-3"
+        class="mt-4 space-y-2"
       >
         <UCard
           v-for="member in paginatedMembers"
           :key="member.id"
         >
-          <div class="flex flex-wrap items-center gap-4 lg:flex-nowrap">
+          <div class="flex flex-wrap items-center gap-3">
             <UAvatar
               :src="avatarUrl(member.avatar_path)"
               :alt="member.full_name"
               :text="initials(member.full_name)"
               size="lg"
             />
-            <div class="min-w-0 flex-1 basis-48">
+            <div class="min-w-0 flex-1">
               <h3 class="truncate font-semibold">
                 {{ member.full_name }}
               </h3>
@@ -552,7 +578,7 @@ onMounted(loadPeople)
                 {{ member.phone }}
               </p>
             </div>
-            <div class="flex min-w-32 flex-1 flex-wrap gap-2 lg:max-w-sm">
+            <div class="flex w-full flex-wrap gap-1.5">
               <UBadge
                 v-for="role in memberRoles.get(member.id) || ['member']"
                 :key="role"
@@ -561,29 +587,31 @@ onMounted(loadPeople)
                 :label="roleLabels[role]"
               />
             </div>
-            <p class="text-xs text-muted lg:whitespace-nowrap">
+            <p class="mr-auto text-xs text-muted">
               Cadastro em {{ formatDate(member.created_at) }}
             </p>
-            <UButton
-              size="sm"
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-eye"
-              label="Detalhes"
-              :aria-label="`Ver detalhes de ${member.full_name}`"
-              @click="openMemberDetails(member)"
-            />
-            <UButton
-              v-if="canManageRoles"
-              size="sm"
-              color="neutral"
-              variant="outline"
-              :icon="expandedMemberId === member.id ? 'i-lucide-chevron-up' : 'i-lucide-settings-2'"
-              :label="expandedMemberId === member.id ? 'Fechar' : 'Permissões'"
-              :aria-expanded="expandedMemberId === member.id"
-              :aria-controls="`member-roles-${member.id}`"
-              @click="expandedMemberId = expandedMemberId === member.id ? null : member.id"
-            />
+            <div class="flex w-full flex-wrap justify-end gap-2">
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-eye"
+                label="Detalhes"
+                :aria-label="`Ver detalhes de ${member.full_name}`"
+                @click="openMemberDetails(member)"
+              />
+              <UButton
+                v-if="canManageRoles"
+                size="sm"
+                color="neutral"
+                variant="outline"
+                :icon="expandedMemberId === member.id ? 'i-lucide-chevron-up' : 'i-lucide-settings-2'"
+                :label="expandedMemberId === member.id ? 'Fechar' : 'Permissões'"
+                :aria-expanded="expandedMemberId === member.id"
+                :aria-controls="`member-roles-${member.id}`"
+                @click="expandedMemberId = expandedMemberId === member.id ? null : member.id"
+              />
+            </div>
           </div>
 
           <div
@@ -728,14 +756,14 @@ onMounted(loadPeople)
       <template #body>
         <div
           v-if="selectedMember"
-          class="space-y-6"
+          class="space-y-4"
         >
-          <div class="flex items-center gap-4">
+          <div class="flex items-center gap-3">
             <UAvatar
               :src="avatarUrl(selectedMember.avatar_path)"
               :alt="selectedMember.full_name"
               :text="initials(selectedMember.full_name)"
-              size="2xl"
+              size="xl"
             />
             <div class="min-w-0">
               <p class="break-words text-lg font-semibold">
@@ -747,7 +775,7 @@ onMounted(loadPeople)
             </div>
           </div>
 
-          <dl class="grid gap-4 rounded-xl border border-default p-4 sm:grid-cols-2">
+          <dl class="grid grid-cols-2 gap-3 rounded-xl border border-default p-3">
             <div>
               <dt class="text-xs font-semibold uppercase tracking-wide text-muted">
                 Telefone
