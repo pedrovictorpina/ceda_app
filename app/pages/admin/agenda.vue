@@ -376,40 +376,40 @@ useCreateFromQuery(openCreate)
       :description="errorMessage || feedback"
     />
 
-    <section class="mt-6 grid gap-4 sm:grid-cols-3">
-      <UCard>
+    <section class="mt-4 grid grid-cols-3 gap-2 sm:mt-6 sm:gap-4">
+      <UCard :ui="{ body: 'p-3 sm:p-6' }">
         <UIcon
           name="i-lucide-calendar-days"
-          class="size-6 text-primary"
+          class="size-4 text-primary sm:size-6"
         />
-        <p class="mt-4 text-3xl font-bold">
+        <p class="mt-2 text-xl font-bold sm:mt-4 sm:text-3xl">
           {{ loading ? '—' : activeEvents.length }}
         </p>
-        <p class="mt-1 text-sm text-muted">
+        <p class="mt-1 text-xs text-muted sm:text-sm">
           Eventos ativos
         </p>
       </UCard>
-      <UCard>
+      <UCard :ui="{ body: 'p-3 sm:p-6' }">
         <UIcon
           name="i-lucide-calendar-clock"
-          class="size-6 text-primary"
+          class="size-4 text-primary sm:size-6"
         />
-        <p class="mt-4 text-3xl font-bold">
+        <p class="mt-2 text-xl font-bold sm:mt-4 sm:text-3xl">
           {{ loading ? '—' : upcomingEvents.length }}
         </p>
-        <p class="mt-1 text-sm text-muted">
+        <p class="mt-1 text-xs text-muted sm:text-sm">
           Próximos eventos
         </p>
       </UCard>
-      <UCard>
+      <UCard :ui="{ body: 'p-3 sm:p-6' }">
         <UIcon
           name="i-lucide-bell-ring"
-          class="size-6 text-primary"
+          class="size-4 text-primary sm:size-6"
         />
-        <p class="mt-4 text-3xl font-bold">
+        <p class="mt-2 text-xl font-bold sm:mt-4 sm:text-3xl">
           {{ loading ? '—' : activeReminders.length }}
         </p>
-        <p class="mt-1 text-sm text-muted">
+        <p class="mt-1 text-xs text-muted sm:text-sm">
           Preferências de aviso salvas
         </p>
       </UCard>
@@ -426,12 +426,12 @@ useCreateFromQuery(openCreate)
           </p>
           <h2
             id="events-title"
-            class="mt-1 text-2xl font-bold"
+            class="mt-1 text-lg font-bold sm:text-2xl"
           >
             Eventos da comunidade
           </h2>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div class="flex w-full flex-wrap justify-end gap-2 sm:w-auto">
           <UButton
             color="neutral"
             variant="outline"
@@ -602,6 +602,7 @@ useCreateFromQuery(openCreate)
 
     <UModal
       v-model:open="editorOpen"
+      :ui="{ content: 'left-0 top-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 rounded-none sm:left-1/2 sm:top-1/2 sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-2rem)] sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl', header: 'pr-14 pt-[max(1rem,env(safe-area-inset-top))]', close: 'top-[max(1rem,env(safe-area-inset-top))]', body: 'overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))]' }"
       :title="editingId ? 'Editar evento' : 'Novo evento'"
       description="Publique os detalhes do encontro. As preferências de aviso pertencem somente à sua conta."
     >

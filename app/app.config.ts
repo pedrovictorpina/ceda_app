@@ -84,7 +84,8 @@ export default defineAppConfig({
     },
     modal: {
       slots: {
-        content: 'rounded-2xl shadow-2xl'
+        content: 'rounded-2xl shadow-2xl',
+        header: 'pr-14'
       }
     },
     drawer: {

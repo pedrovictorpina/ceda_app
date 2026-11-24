@@ -769,7 +769,10 @@ onMounted(async () => {
         class="focus-ring rounded font-medium text-primary underline-offset-4 hover:underline"
       >Política de Privacidade</ULink>.
     </p>
-    <UModal v-model:open="familyEditorOpen">
+    <UModal
+      v-model:open="familyEditorOpen"
+      :ui="{ content: 'left-0 top-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 overflow-y-auto rounded-none sm:left-1/2 sm:top-1/2 sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-2rem)] sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl', header: 'pr-14 pt-[max(1rem,env(safe-area-inset-top))]', close: 'top-[max(1rem,env(safe-area-inset-top))]', body: 'overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))]' }"
+    >
       <template #content>
         <UCard>
           <template #header>
